@@ -24,33 +24,33 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _LIBNETCFM_H
-#define _LIBNETCFM_H
+#ifndef _CFM_SESSION_H
+#define _CFM_SESSION_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <semaphore.h>
+#include <stdbool.h>
 
-#include "cfm_session.h"
+/* Add a typedef for a CFM session id */
+typedef long int cfm_session_id;
 
-/* Library version */
-#define LIBNETCFM_VERSION "0.1"
+#define MAC_ADDR_SIZE 20
+#define IF_NAME_SIZE 32
+#define NET_NS_SIZE 32
+#define MAX_PATH 512
 
-/* Flag to enable debug messages */
-#ifdef DEBUG_ENABLE
-#define pr_debug(...) printf(__VA_ARGS__)
-#else
-#define pr_debug(...)
-#endif
+struct cfm_thread {
+    sem_t sem;
+    struct cfm_session_params *session_params;
+    int ret;
+};
 
-/* Library interfaces */
-const char *netcfm_lib_version(void);
-cfm_session_id cfm_session_start(struct cfm_session_params *params);
-void cfm_session_stop(cfm_session_id session_id);
+struct cb_status {
+    int cb_ret;                                                 /* Callback return value */
+    struct cfm_session_params *session_params;                  /* Pointer to current session parameters */
+};
 
-#ifdef __cplusplus
-}
-#endif
+struct cfm_session_params {
+    char if_name[IF_NAME_SIZE];                                 /* Network interface name */
+};
 
-#endif //_LIBNETCFM_H
-
+#endif //_CFM_SESSION_H

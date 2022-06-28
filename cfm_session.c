@@ -24,33 +24,59 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _LIBNETCFM_H
-#define _LIBNETCFM_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <pthread.h>
+#include <stdio.h>
 
 #include "cfm_session.h"
+#include "libnetcfm.h"
 
-/* Library version */
-#define LIBNETCFM_VERSION "0.1"
+/* Entry point of a new CFM session */
+void *cfm_session_run(void *args) {
 
-/* Flag to enable debug messages */
-#ifdef DEBUG_ENABLE
-#define pr_debug(...) printf(__VA_ARGS__)
-#else
-#define pr_debug(...)
-#endif
+    struct cfm_thread *current_thread = (struct cfm_thread *)args;
 
-/* Library interfaces */
-const char *netcfm_lib_version(void);
-cfm_session_id cfm_session_start(struct cfm_session_params *params);
-void cfm_session_stop(cfm_session_id session_id);
+    sem_post(&current_thread->sem);
+    printf("Started CFM session.\n");
 
-#ifdef __cplusplus
+    return NULL;
 }
-#endif
 
-#endif //_LIBNETCFM_H
+/* 
+ * Create a new BFD session, returns a session id
+ * on successful creation, -1 otherwise
+ */
+cfm_session_id cfm_session_start(struct cfm_session_params *params) {
+    
+    pthread_t session_id;
+    int ret;
+    struct cfm_thread new_thread;
 
+    new_thread.session_params = params;
+    new_thread.ret = 0;
+
+    sem_init(&new_thread.sem, 0, 0);
+
+    ret = pthread_create(&session_id, NULL, cfm_session_run, (void *)&new_thread);
+
+    if (ret) {
+        fprintf(stderr, "cfm_session_create for interface: %s failed, err: %d\n", params->if_name, ret);
+        return -1;
+    }
+
+    sem_wait(&new_thread.sem);
+
+    if (new_thread.ret != 0)
+        return new_thread.ret;
+    
+    return session_id;
+}
+
+/* Stop a CFM session */
+void cfm_session_stop(cfm_session_id session_id) {
+
+    if (session_id > 0) {
+        pr_debug("Stopping CFM session: %ld\n", session_id);
+        pthread_cancel(session_id);
+        pthread_join(session_id, NULL);
+    }
+}

@@ -11,7 +11,7 @@ Q=@
 endif
 
 # Use DEBUG_ENABLE=1 for a debug build
-DEBUG_ENABLE ?= 0
+DEBUG_ENABLE ?= 1
 ifeq ($(DEBUG_ENABLE), 1)
 CFLAGS += -DDEBUG_ENABLE
 endif
@@ -44,8 +44,8 @@ endif
 libs:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
 	$(Q)mkdir $(OUTDIR)
-	$(Q)$(CC) -c $(CFLAGS) -fpic libnetcfm.c
-	$(Q)$(CC) -shared -Wl,-soname,libnetcfm.so.$(VERSION) -o $(OUTDIR)/libnetcfm.so.$(VERSION) libnetcfm.o
+	$(Q)$(CC) -c $(CFLAGS) -fpic libnetcfm.c cfm_session.c
+	$(Q)$(CC) -shared -Wl,-soname,libnetcfm.so.$(VERSION) -o $(OUTDIR)/libnetcfm.so.$(VERSION) libnetcfm.o cfm_session.o
 	$(Q)rm *.o
 
 install:
