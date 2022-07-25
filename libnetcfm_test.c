@@ -9,20 +9,20 @@ int main(void) {
     cfm_session_id s1 = 0;
 
     struct cfm_session_params s1_params = {
-        .if_name = "if1",
+        .if_name = "enx747827fcb293",
     };
     
     printf("Running with: %s\n", netcfm_lib_version());
     pr_debug("NOTE: You are running a debug build.\n");
 
-    s1 = cfm_session_start(&s1_params);
+    s1 = cfm_session_start(&s1_params, CFM_SESSION_LBM);
 
     if (s1 < 0)
-        fprintf(stderr, "CFM session start failed.\n");
+        fprintf(stderr, "CFM LBM session start failed.\n");
     else
         printf("Session started, id: %ld\n", s1);
 
-    sleep(5);
+    sleep(3);
 
     cfm_session_stop(s1);
 

@@ -33,7 +33,12 @@
 /* Add a typedef for a CFM session id */
 typedef long int cfm_session_id;
 
-#define MAC_ADDR_SIZE 20
+/* Types of CFM sessions, we only implement ETH-LB for the moment */
+enum cfm_session_type {
+    CFM_SESSION_LBM = 0,
+    CFM_SESSION_LBR = 1,
+};
+
 #define IF_NAME_SIZE 32
 #define NET_NS_SIZE 32
 #define MAX_PATH 512
@@ -51,6 +56,7 @@ struct cb_status {
 
 struct cfm_session_params {
     char if_name[IF_NAME_SIZE];                                 /* Network interface name */
+    char *dst_mac;                                              /* Destination MAC address */
 };
 
 #endif //_CFM_SESSION_H
