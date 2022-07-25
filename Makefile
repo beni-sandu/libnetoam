@@ -44,8 +44,8 @@ endif
 libs:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
 	$(Q)mkdir $(OUTDIR)
-	$(Q)$(CC) -c $(CFLAGS) -fpic libnetcfm.c cfm_session.c
-	$(Q)$(CC) -shared -Wl,-soname,libnetcfm.so.$(VERSION) -o $(OUTDIR)/libnetcfm.so.$(VERSION) libnetcfm.o cfm_session.o
+	$(Q)$(CC) -c $(CFLAGS) -fpic libnetcfm.c cfm_session.c cfm_frame.c
+	$(Q)$(CC) -shared -Wl,-soname,libnetcfm.so.$(VERSION) -o $(OUTDIR)/libnetcfm.so.$(VERSION) libnetcfm.o cfm_session.o cfm_frame.o
 	$(Q)rm *.o
 
 install:
