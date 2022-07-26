@@ -31,8 +31,39 @@
 #include <string.h>
 #include <linux/if_packet.h>
 #include <arpa/inet.h>
+#include <net/ethernet.h>
+#include <ctype.h>
 
 #include "libnetcfm.h"
+
+int hex2bin(char ch) {
+	if ((ch >= '0') && (ch <= '9'))
+		return ch - '0';
+	ch = tolower(ch);
+	if ((ch >= 'a') && (ch <= 'f'))
+		return ch - 'a' + 10;
+	return EXIT_FAILURE;
+}
+
+int hwaddr_str2bin(char *mac, uint8_t *addr) {
+	int i;
+
+	for (i = 0; i < ETH_ALEN; i++) {
+		int a, b;
+
+		a = hex2bin(*mac++);
+		if (a < 0)
+			return EXIT_FAILURE;
+		b = hex2bin(*mac++);
+		if (b < 0)
+			return EXIT_FAILURE;
+		*addr++ = (a << 4) | b;
+		if (i < ETH_ALEN - 1 && *mac++ != ':')
+			return EXIT_FAILURE;
+	}
+
+	return EXIT_SUCCESS;
+}
 
 int get_eth_mac(char *if_name, uint8_t *mac_addr) {
     
@@ -54,7 +85,7 @@ int get_eth_mac(char *if_name, uint8_t *mac_addr) {
             /* We found our interface, copy the HW address */
             if (ifp->ifa_addr->sa_family == AF_PACKET) {
                 sa = (struct sockaddr_ll *)ifp->ifa_addr;
-                for (int i = 0; i < 8; i++)
+                for (int i = 0; i < ETH_ALEN; i++)
                     mac_addr[i] = sa->sll_addr[i];
             }
 

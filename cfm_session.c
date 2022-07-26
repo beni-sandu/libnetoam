@@ -44,9 +44,9 @@ void *cfm_session_run_lbm(void *args) {
     struct cfm_thread *current_thread = (struct cfm_thread *)args;
     struct cfm_session_params *current_params = current_thread->session_params;
     struct cfm_lb_pdu lbm_frame;
-    uint8_t src_hwaddr[8];
+    uint8_t src_hwaddr[ETH_ALEN];
+    uint8_t dst_hwaddr[ETH_ALEN];
     libnet_ptag_t eth_ptag = 0;
-    uint8_t dst_hwaddr[] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
@@ -60,8 +60,17 @@ void *cfm_session_run_lbm(void *args) {
         pthread_exit(NULL);
     }
 
-    if (get_eth_mac(current_params->if_name, src_hwaddr) == -1){
+    /* Get source MAC address */
+    if (get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
         fprintf(stderr, "Error getting MAC address of local interface.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Get destination MAC address */
+    if (hwaddr_str2bin(current_params->dst_mac, dst_hwaddr) == -1) {
+        fprintf(stderr, "Error getting destination MAC address.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);

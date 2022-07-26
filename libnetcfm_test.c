@@ -10,6 +10,7 @@ int main(void) {
 
     struct cfm_session_params s1_params = {
         .if_name = "enx747827fcb293",
+        .dst_mac = "ab:bc:cd:de:ef:f1"
     };
     
     printf("Running with: %s\n", netcfm_lib_version());
