@@ -100,6 +100,40 @@ int get_eth_mac(char *if_name, uint8_t *mac_addr) {
     return EXIT_FAILURE;
 }
 
+int get_eth_index(char *if_name, int *if_index) {
+
+    struct ifaddrs *addrs, *ifp;
+    struct sockaddr_ll *sll;
+
+    /* Get a list of network interfaces on the system */
+    if (getifaddrs(&addrs) == -1) {
+        perror("getifaddrs");
+        return EXIT_FAILURE;
+    }
+
+    /* Walk through the list and get the MAC of our interface */
+    ifp = addrs;
+
+    while (ifp != NULL) {
+        if (strcmp(if_name, ifp->ifa_name) == 0) {
+
+            /* We found our interface, copy the index */
+            if (ifp->ifa_addr->sa_family == AF_PACKET) {
+                sll = (struct sockaddr_ll *)ifp->ifa_addr;
+                *if_index = sll->sll_ifindex;
+            }
+
+            freeifaddrs(addrs);
+            return EXIT_SUCCESS;
+        }
+        ifp = ifp->ifa_next;
+    }
+
+    /* The provided interface is not present on the machine */
+    freeifaddrs(addrs);
+    return EXIT_FAILURE;
+}
+
 /* Return library version */
 const char *netcfm_lib_version(void) {
 

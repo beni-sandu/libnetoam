@@ -24,7 +24,7 @@ int main(void) {
     else
         printf("Session started, id: %ld\n", s1);
 
-    sleep(3);
+    sleep(30);
 
     cfm_session_stop(s1);
 

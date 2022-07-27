@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <libnet.h>
 #include <sys/capability.h>
+#include <linux/if_packet.h>
 
 #include "cfm_session.h"
 #include "cfm_frame.h"
@@ -43,6 +44,9 @@ __thread libnet_t *l;                                       /* libnet context */
 __thread char libnet_errbuf[LIBNET_ERRBUF_SIZE];            /* libnet error buffer */
 __thread struct cfm_lbm_timer tx_timer;                     /* TX timer */
 __thread struct cfm_lb_pdu lb_frame;
+__thread int sockfd;                                        /* RX socket file descriptor */
+__thread struct sockaddr_ll sll;                            /* RX socket address */
+__thread ssize_t numbytes;                                  /* Number of bytes received */
 
 /* Entry point of a new CFM LBM session */
 void *cfm_session_run_lbm(void *args) {
@@ -55,6 +59,9 @@ void *cfm_session_run_lbm(void *args) {
     struct itimerspec tx_ts;
     struct sigevent tx_sev;
     struct cfm_lb_session current_session;
+    int if_index;
+
+    uint8_t buf[1024];
 
     /* Initialize timer data */
     tx_timer.session_params = current_params;
@@ -65,6 +72,8 @@ void *cfm_session_run_lbm(void *args) {
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
     tx_timer.is_session_configured = false;
+
+    int flag_enable = 1;
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lbm_session_cleanup, (void *)&tx_timer);
@@ -147,6 +156,47 @@ void *cfm_session_run_lbm(void *args) {
     tx_timer.is_timer_created = true;
     pr_debug("TX timer ID: %p\n", tx_timer.timer_id);
 
+    /* Create a raw socket for incoming frames */
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_CFM))) == -1) { // do I need another protocol here?
+        perror("socket");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Store the sockfd so we can close it from the cleanup handler */
+    tx_timer.current_session->sockfd = sockfd;
+
+    /* Make socket address reusable */
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag_enable, sizeof(flag_enable)) < 0) {
+        fprintf(stderr, "Can't configure socket address to be reused.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Get interface index */
+    if (get_eth_index(current_params->if_name, &if_index) == -1) {
+        fprintf(stderr, "Can't get interface index.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Setup socket address (is this enough?)*/
+    memset(&sll, 0, sizeof(struct sockaddr_ll));
+    sll.sll_family = AF_PACKET;
+    sll.sll_ifindex = if_index;
+    sll.sll_protocol = htons(ETHERTYPE_CFM);
+    
+    /* Bind it */
+    if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
+        perror("bind");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
     /* Session configuration is successful, return a valid session id */
     tx_timer.is_session_configured = true;
     pr_debug("LBM session configured successfully.\n");
@@ -160,8 +210,13 @@ void *cfm_session_run_lbm(void *args) {
         pthread_exit(NULL);
     }
 
+    printf("Listening for data...\n");
+
     /* Processing loop for incoming frames */
-    while (true) {}
+    while (true) {
+        numbytes = recvfrom(sockfd, buf, 1024, 0, NULL, NULL);
+        printf("got frame %lu bytes\n", numbytes);
+    }
 
     pthread_cleanup_pop(0);
 
@@ -182,7 +237,7 @@ void *cfm_session_run_lbr(void *args) {
 }
 
 /* 
- * Create a new BFD session, returns a session id
+ * Create a new CFM session, returns a session id
  * on successful creation, -1 otherwise
  */
 cfm_session_id cfm_session_start(struct cfm_session_params *params, enum cfm_session_type session_type) {
@@ -258,7 +313,7 @@ void lbm_session_cleanup(void *args) {
     
     struct cfm_lbm_timer *timer = (struct cfm_lbm_timer *)args;
 
-    /* Cleanup allocated data */
+    /* Cleanup timer data */
     if (timer->is_timer_created == true) {
         timer_delete(timer->timer_id);
         
@@ -269,8 +324,13 @@ void lbm_session_cleanup(void *args) {
         usleep(100000);
     }
     
+    /* Clean up libnet context */
     if (timer->l != NULL)
         libnet_destroy(timer->l);
+    
+    /* Close socket */
+    if (timer->current_session->sockfd != 0)
+        close(timer->current_session->sockfd);
 
     /* 
      * If a session is not successfully configured, we don't call pthread_join on it,
