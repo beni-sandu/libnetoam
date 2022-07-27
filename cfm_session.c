@@ -29,10 +29,13 @@
 #include <libnet.h>
 #include <sys/capability.h>
 #include <linux/if_packet.h>
+#include <poll.h>
 
 #include "cfm_session.h"
 #include "cfm_frame.h"
 #include "libnetcfm.h"
+
+#define RECV_BUF_SIZE 1024
 
 /* Forward declarations */
 void lbm_timeout_handler(union sigval sv);
@@ -47,6 +50,34 @@ __thread struct cfm_lb_pdu lb_frame;
 __thread int sockfd;                                        /* RX socket file descriptor */
 __thread struct sockaddr_ll sll;                            /* RX socket address */
 __thread ssize_t numbytes;                                  /* Number of bytes received */
+__thread char recv_buf[RECV_BUF_SIZE];                      /* Buffer for received frames */
+
+ssize_t recvfrom_ppoll(int sockfd, char *recv_buf, int buf_size, int timeout_ms) {
+
+    struct pollfd fds[1];
+    struct timespec ts;
+    int ret;
+
+    fds[0].fd = sockfd;
+    fds[0].events = POLLIN;
+
+    ts.tv_sec = timeout_ms / 1000;
+    ts.tv_nsec = timeout_ms % 1000 * 1000;
+
+    ret = ppoll(fds, 1, &ts, NULL);
+
+    if (ret == -1) {
+        perror("ppoll"); //error in ppoll call
+    }
+    else if (ret == 0) {
+        return -2; //timeout expired
+    }
+    else
+        if (fds[0].revents & POLLIN)
+            return recvfrom(sockfd, recv_buf, buf_size, 0, NULL, NULL);
+    
+    return EXIT_FAILURE;
+}
 
 /* Entry point of a new CFM LBM session */
 void *cfm_session_run_lbm(void *args) {
@@ -60,8 +91,6 @@ void *cfm_session_run_lbm(void *args) {
     struct sigevent tx_sev;
     struct cfm_lb_session current_session;
     int if_index;
-
-    uint8_t buf[1024];
 
     /* Initialize timer data */
     tx_timer.session_params = current_params;
@@ -210,12 +239,18 @@ void *cfm_session_run_lbm(void *args) {
         pthread_exit(NULL);
     }
 
-    printf("Listening for data...\n");
-
     /* Processing loop for incoming frames */
     while (true) {
-        numbytes = recvfrom(sockfd, buf, 1024, 0, NULL, NULL);
-        printf("got frame %lu bytes\n", numbytes);
+
+        /* Check our socket for data */
+        numbytes = recvfrom_ppoll(sockfd, recv_buf, RECV_BUF_SIZE, current_params->interval_ms);
+
+        /* We didn't get any response in the expected interval */
+        if (numbytes == -2) {
+            printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
+        }
+        else
+            printf("Got %ld bytes\n", numbytes);
     }
 
     pthread_cleanup_pop(0);
