@@ -36,6 +36,7 @@
 /* Forward declarations */
 void lbm_timeout_handler(union sigval sv);
 int cfm_update_timer(int interval, struct itimerspec *ts, struct cfm_lbm_timer *timer_data);
+void lbm_session_cleanup(void *args);
 
 /* Per thread variables */
 __thread libnet_t *l;                                       /* libnet context */
@@ -64,6 +65,9 @@ void *cfm_session_run_lbm(void *args) {
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
     tx_timer.is_session_configured = false;
+
+    /* Install session cleanup handler */
+    pthread_cleanup_push(lbm_session_cleanup, (void *)&tx_timer);
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
@@ -145,6 +149,7 @@ void *cfm_session_run_lbm(void *args) {
 
     /* Session configuration is successful, return a valid session id */
     tx_timer.is_session_configured = true;
+    pr_debug("LBM session configured successfully.\n");
     sem_post(&current_thread->sem);
 
     /* Start sending LBM frames */
@@ -158,6 +163,9 @@ void *cfm_session_run_lbm(void *args) {
     /* Processing loop for incoming frames */
     while (true) {}
 
+    pthread_cleanup_pop(0);
+
+    /* Should never reach this */
     return NULL;
 }
 
@@ -167,7 +175,7 @@ void *cfm_session_run_lbr(void *args) {
     struct cfm_thread *current_thread = (struct cfm_thread *)args;
     struct cfm_session_params *current_params = current_thread->session_params;
 
-    pr_debug("CFM LBR session configured successfully.\n");
+    pr_debug("LBR session configured successfully.\n");
     sem_post(&current_thread->sem);
 
     return NULL;
@@ -200,7 +208,7 @@ cfm_session_id cfm_session_start(struct cfm_session_params *params, enum cfm_ses
     }
 
     if (ret) {
-        fprintf(stderr, "cfm_session_create for interface: %s failed, err: %d\n", params->if_name, ret);
+        fprintf(stderr, "cfm_session_start for interface: %s failed, err: %d\n", params->if_name, ret);
         return -1;
     }
 
@@ -244,4 +252,31 @@ void lbm_timeout_handler(union sigval sv) {
         fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
         pthread_exit(NULL);
     }
+}
+
+void lbm_session_cleanup(void *args) {
+    
+    struct cfm_lbm_timer *timer = (struct cfm_lbm_timer *)args;
+
+    /* Cleanup allocated data */
+    if (timer->is_timer_created == true) {
+        timer_delete(timer->timer_id);
+        
+        /*
+         * Temporary workaround for C++ programs, seems sometimes the timer doesn't 
+         * get disarmed in time, and tries to use memory that was already freed.
+         */
+        usleep(100000);
+    }
+    
+    if (timer->l != NULL)
+        libnet_destroy(timer->l);
+
+    /* 
+     * If a session is not successfully configured, we don't call pthread_join on it,
+     * only exit using pthread_exit. Calling pthread_detach here should automatically
+     * release resources for unconfigured sessions.
+     */
+    if (timer->is_session_configured == false)
+        pthread_detach(pthread_self());
 }
