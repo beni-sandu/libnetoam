@@ -29,6 +29,10 @@
 
 #include <stdint.h>
 #include <net/ethernet.h>
+#include <libnet.h>
+#include <pthread.h>
+
+#include "cfm_session.h"
 
 /* 
  * CFM OpCodes
@@ -99,6 +103,25 @@ struct cfm_lb_pdu {
 	uint32_t transaction_id;
 	uint8_t end_tlv;
 } __attribute__((__packed__));
+
+/* Wrapper to update CFM LB frame */
+static inline void cfm_update_lb_frame(struct cfm_lb_pdu *frame, struct cfm_lb_session *current_session,
+									   libnet_ptag_t *eth_tag, libnet_t *l) {
+
+	*eth_tag = libnet_build_ethernet(
+		current_session->dst_mac,			/* Destination MAC */
+		current_session->src_mac,			/* MAC of local interface */
+		ETHERTYPE_CFM,						/* Ethernet type */
+		(uint8_t *)frame,					/* Payload (LBM frame filled above) */
+		sizeof(struct cfm_lb_pdu),			/* Payload size */
+		l,						   			/* libnet handle */
+		*eth_tag);
+
+	if (*eth_tag == -1) {
+		fprintf(stderr, "Can't build LBM frame: %s\n", libnet_geterror(l));
+		pthread_exit(NULL);
+	}
+}
 
 /* Prototypes */
 void cfm_build_common_header(uint8_t md_level, uint8_t version, enum cfm_opcode opcode, uint8_t flags,

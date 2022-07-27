@@ -10,7 +10,8 @@ int main(void) {
 
     struct cfm_session_params s1_params = {
         .if_name = "enx747827fcb293",
-        .dst_mac = "ab:bc:cd:de:ef:f1"
+        .dst_mac = "ab:bc:cd:de:ef:f1",
+        .interval_ms = 1000,
     };
     
     printf("Running with: %s\n", netcfm_lib_version());
@@ -23,7 +24,7 @@ int main(void) {
     else
         printf("Session started, id: %ld\n", s1);
 
-    sleep(3);
+    sleep(30);
 
     cfm_session_stop(s1);
 

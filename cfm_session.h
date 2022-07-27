@@ -29,6 +29,7 @@
 
 #include <semaphore.h>
 #include <stdbool.h>
+#include <libnet.h>
 
 /* Add a typedef for a CFM session id */
 typedef long int cfm_session_id;
@@ -57,6 +58,26 @@ struct cb_status {
 struct cfm_session_params {
     char if_name[IF_NAME_SIZE];                                 /* Network interface name */
     char *dst_mac;                                              /* Destination MAC address */
+    uint16_t interval_ms;                                       /* Ping interval in miliseconds */
+};
+
+struct cfm_lb_session {
+    uint8_t *src_mac;
+    uint8_t *dst_mac;
+    uint32_t transaction_id;
+};
+
+/* Data passed to per session timer */
+struct cfm_lbm_timer {
+    bool is_timer_created;
+    bool is_session_configured;
+    timer_t timer_id;                                           /* POSIX interval timer id */
+    struct cfm_session_params *session_params;                  /* pointer to current session parameters */
+    struct cfm_lb_pdu *frame;                                   /* pointer to lbm frame */
+    libnet_ptag_t *eth_ptag;
+    libnet_t *l;
+    struct itimerspec *ts;
+    struct cfm_lb_session *current_session;                     /* Pointer to current CFM LB session */
 };
 
 #endif //_CFM_SESSION_H
