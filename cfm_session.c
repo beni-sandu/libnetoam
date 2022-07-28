@@ -35,8 +35,6 @@
 #include "cfm_frame.h"
 #include "libnetcfm.h"
 
-#define RECV_BUF_SIZE 1024
-
 /* Forward declarations */
 void lbm_timeout_handler(union sigval sv);
 int cfm_update_timer(int interval, struct itimerspec *ts, struct cfm_lbm_timer *timer_data);
@@ -50,9 +48,9 @@ __thread struct cfm_lb_pdu lb_frame;
 __thread int sockfd;                                        /* RX socket file descriptor */
 __thread struct sockaddr_ll sll;                            /* RX socket address */
 __thread ssize_t numbytes;                                  /* Number of bytes received */
-__thread char recv_buf[RECV_BUF_SIZE];                      /* Buffer for received frames */
+__thread uint8_t recv_buf[ETH_DATA_LEN];                    /* Buffer for incoming frames */
 
-ssize_t recvfrom_ppoll(int sockfd, char *recv_buf, int buf_size, int timeout_ms) {
+ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms) {
 
     struct pollfd fds[1];
     struct timespec ts;
@@ -235,22 +233,33 @@ void *cfm_session_run_lbm(void *args) {
     if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
         perror("timer settime");
         current_thread->ret = -1;
-        sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
     /* Processing loop for incoming frames */
     while (true) {
-
+        
+        printf("Working\n");
+        sleep(5);
+#if 0
         /* Check our socket for data */
-        numbytes = recvfrom_ppoll(sockfd, recv_buf, RECV_BUF_SIZE, current_params->interval_ms);
+        numbytes = recvfrom_ppoll(sockfd, recv_buf, ETH_DATA_LEN, current_params->interval_ms);
 
         /* We didn't get any response in the expected interval */
-        if (numbytes == -2) {
+        if (numbytes == -2)
             printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
-        }
-        else
+
+        if (numbytes > 0) {
             printf("Got %ld bytes\n", numbytes);
+            struct ether_header *eh = (struct ether_header *)recv_buf;
+            printf("Source MAC: %x:%x:%x:%x:%x:%x\n", eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2],
+                eh->ether_shost[3], eh->ether_shost[4], eh->ether_shost[5]);
+            
+            struct cfm_lb_pdu *pdup = (struct cfm_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+            printf("Trans id: %d\n", ntohl(pdup->transaction_id));
+        }
+#endif
+
     }
 
     pthread_cleanup_pop(0);
@@ -264,9 +273,81 @@ void *cfm_session_run_lbr(void *args) {
 
     struct cfm_thread *current_thread = (struct cfm_thread *)args;
     struct cfm_session_params *current_params = current_thread->session_params;
+    uint8_t src_hwaddr[ETH_ALEN];
+    uint8_t dst_hwaddr[ETH_ALEN];
+    int flag_enable = 1;
+    int if_index;
+
+    l = libnet_init(
+        LIBNET_LINK,                                /* injection type */
+        current_params->if_name,                    /* network interface */
+        libnet_errbuf);                             /* error buffer */
+
+    if (l == NULL) {
+        fprintf(stderr, "libnet_init() failed: %s\n", libnet_errbuf);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Get source MAC address */
+    if (get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
+        fprintf(stderr, "Error getting MAC address of local interface.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Create a raw socket for incoming frames */
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_CFM))) == -1) {
+        perror("socket");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Make socket address reusable */
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag_enable, sizeof(flag_enable)) < 0) {
+        fprintf(stderr, "Can't configure socket address to be reused.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Get interface index */
+    if (get_eth_index(current_params->if_name, &if_index) == -1) {
+        fprintf(stderr, "Can't get interface index.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Setup socket address */
+    memset(&sll, 0, sizeof(struct sockaddr_ll));
+    sll.sll_family = AF_PACKET;
+    sll.sll_ifindex = if_index;
+    sll.sll_protocol = htons(ETHERTYPE_CFM);
+    
+    /* Bind it */
+    if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
+        perror("bind");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
 
     pr_debug("LBR session configured successfully.\n");
     sem_post(&current_thread->sem);
+
+    /* Processing loop for incoming packets */
+    while (true) {
+
+        /* Wait for data on the socket */
+        printf("Waiting for data...\n");
+        numbytes = recvfrom(sockfd, recv_buf, ETH_DATA_LEN, 0, NULL, NULL);
+
+        printf("Got %ld bytes\n", numbytes);
+    }
 
     return NULL;
 }
