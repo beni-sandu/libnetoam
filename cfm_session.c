@@ -277,6 +277,11 @@ void *cfm_session_run_lbr(void *args) {
     uint8_t dst_hwaddr[ETH_ALEN];
     int flag_enable = 1;
     int if_index;
+    struct ether_header *eh;
+    struct cfm_lb_pdu *lbr_frame;
+    libnet_ptag_t eth_ptag = 0;
+    int c;
+
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
@@ -343,10 +348,49 @@ void *cfm_session_run_lbr(void *args) {
     while (true) {
 
         /* Wait for data on the socket */
-        printf("Waiting for data...\n");
         numbytes = recvfrom(sockfd, recv_buf, ETH_DATA_LEN, 0, NULL, NULL);
 
-        printf("Got %ld bytes\n", numbytes);
+        /* We got something, look around */
+        pr_debug("Received frame on LBR session, %ld bytes.\n", numbytes);
+        eh = (struct ether_header *)recv_buf;
+
+        /* Check destination MAC just in case */
+        if (!(eh->ether_dhost[0] == src_hwaddr[0] &&
+                    eh->ether_dhost[1] == src_hwaddr[1] &&
+                    eh->ether_dhost[2] == src_hwaddr[2] &&
+                    eh->ether_dhost[3] == src_hwaddr[3] &&
+                    eh->ether_dhost[4] == src_hwaddr[4] &&
+                    eh->ether_dhost[5] == src_hwaddr[5])) {
+            pr_debug("Destination MAC of received CFM frame is for a different interface.\n");
+            continue;
+        }
+
+        /* Except for the LBR Opcode, all CFM specific PDU data is copied from the received LBM frame */
+        lbr_frame = (struct cfm_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+        memcpy(&lb_frame, lbr_frame, sizeof(struct cfm_lb_pdu));
+        lb_frame.cfm_header.opcode = CFM_OP_LBR;
+
+        /* Copy destination MAC address */
+        for (int i = 0; i < ETH_ALEN; i++)
+            dst_hwaddr[i] = eh->ether_shost[i];
+
+        /* Build everything for the LBR frame that we send as a reply */
+        eth_ptag = libnet_build_ethernet(
+            (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
+            (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
+            ETHERTYPE_CFM,                                          /* Ethernet type */
+            (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
+            sizeof(lb_frame),                                       /* Payload size */
+            l,                                                      /* libnet handle */
+            eth_ptag);                                              /* libnet tag */
+        
+        /* Send CFM frame on wire */
+        c = libnet_write(l);
+
+        if (c == -1) {
+            fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
+            continue;
+        }
     }
 
     return NULL;

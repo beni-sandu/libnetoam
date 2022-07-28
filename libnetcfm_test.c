@@ -10,7 +10,7 @@ int main(void) {
 
     struct cfm_session_params s1_params = {
         .if_name = "enx747827fcb293",
-        .dst_mac = "ab:bc:cd:de:ef:f1",
+        .dst_mac = "18:31:bf:29:2d:5a",
         .interval_ms = 1000,
     };
     
