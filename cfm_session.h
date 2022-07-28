@@ -66,6 +66,8 @@ struct cfm_lb_session {
     uint8_t *dst_mac;
     uint32_t transaction_id;
     int sockfd;
+    struct timespec time_sent;
+    struct timespec time_received;
 };
 
 /* Data passed to per session timer */

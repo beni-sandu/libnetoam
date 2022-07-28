@@ -89,6 +89,8 @@ void *cfm_session_run_lbm(void *args) {
     struct sigevent tx_sev;
     struct cfm_lb_session current_session;
     int if_index;
+    struct ether_header *eh;
+    struct cfm_lb_pdu *lbm_frame_p;
 
     /* Initialize timer data */
     tx_timer.session_params = current_params;
@@ -239,9 +241,6 @@ void *cfm_session_run_lbm(void *args) {
     /* Processing loop for incoming frames */
     while (true) {
         
-        printf("Working\n");
-        sleep(5);
-#if 0
         /* Check our socket for data */
         numbytes = recvfrom_ppoll(sockfd, recv_buf, ETH_DATA_LEN, current_params->interval_ms);
 
@@ -250,16 +249,32 @@ void *cfm_session_run_lbm(void *args) {
             printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
 
         if (numbytes > 0) {
-            printf("Got %ld bytes\n", numbytes);
-            struct ether_header *eh = (struct ether_header *)recv_buf;
-            printf("Source MAC: %x:%x:%x:%x:%x:%x\n", eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2],
-                eh->ether_shost[3], eh->ether_shost[4], eh->ether_shost[5]);
+            eh = (struct ether_header *)recv_buf;
             
-            struct cfm_lb_pdu *pdup = (struct cfm_lb_pdu *)(recv_buf + sizeof(struct ether_header));
-            printf("Trans id: %d\n", ntohl(pdup->transaction_id));
-        }
-#endif
+            /* Get aprox timestamp of received frame */
+            clock_gettime(CLOCK_REALTIME, &current_session.time_received);
 
+            /* Check destination MAC just in case */
+            if (!(eh->ether_dhost[0] == src_hwaddr[0] &&
+                    eh->ether_dhost[1] == src_hwaddr[1] &&
+                    eh->ether_dhost[2] == src_hwaddr[2] &&
+                    eh->ether_dhost[3] == src_hwaddr[3] &&
+                    eh->ether_dhost[4] == src_hwaddr[4] &&
+                    eh->ether_dhost[5] == src_hwaddr[5])) {
+                pr_debug("Destination MAC of received CFM frame is for a different interface.\n");
+                continue;
+            }
+
+            /* If frame is not CFM LBR, discard it */
+            lbm_frame_p = (struct cfm_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+            if (lbm_frame_p->cfm_header.opcode != CFM_OP_LBR)
+                continue;
+
+            printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
+                    eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
+                    ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
+                    (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));     
+        }
     }
 
     pthread_cleanup_pop(0);
@@ -278,7 +293,7 @@ void *cfm_session_run_lbr(void *args) {
     int flag_enable = 1;
     int if_index;
     struct ether_header *eh;
-    struct cfm_lb_pdu *lbr_frame;
+    struct cfm_lb_pdu *lbr_frame_p;
     libnet_ptag_t eth_ptag = 0;
     int c;
 
@@ -365,9 +380,13 @@ void *cfm_session_run_lbr(void *args) {
             continue;
         }
 
+        /* If frame is not CFM LBM, discard it */
+        lbr_frame_p = (struct cfm_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+        if (lbr_frame_p->cfm_header.opcode != CFM_OP_LBM)
+            continue;
+
         /* Except for the LBR Opcode, all CFM specific PDU data is copied from the received LBM frame */
-        lbr_frame = (struct cfm_lb_pdu *)(recv_buf + sizeof(struct ether_header));
-        memcpy(&lb_frame, lbr_frame, sizeof(struct cfm_lb_pdu));
+        memcpy(&lb_frame, lbr_frame_p, sizeof(struct cfm_lb_pdu));
         lb_frame.cfm_header.opcode = CFM_OP_LBR;
 
         /* Copy destination MAC address */
@@ -391,7 +410,8 @@ void *cfm_session_run_lbr(void *args) {
             fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
             continue;
         }
-    }
+
+    } // while (true)
 
     return NULL;
 }
@@ -455,7 +475,7 @@ void lbm_timeout_handler(union sigval sv) {
     struct cfm_lb_session *current_session = timer_data->current_session;
 
     /* Update transaction id */
-    cfm_build_lb_frame(current_session->transaction_id++, 0, lbm_frame);
+    cfm_build_lb_frame(current_session->transaction_id, 0, lbm_frame);
 
     /* Update rest of the frame */
     cfm_update_lb_frame(lbm_frame, current_session, eth_tag, l);
@@ -467,6 +487,12 @@ void lbm_timeout_handler(union sigval sv) {
         fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
         pthread_exit(NULL);
     }
+
+    /* Get aprox timestamp of sent frame */
+    clock_gettime(CLOCK_REALTIME, &current_session->time_sent);
+    pr_debug("Sent LBM with transaction id: %d\n", current_session->transaction_id);
+
+    current_session->transaction_id++;
 }
 
 void lbm_session_cleanup(void *args) {
