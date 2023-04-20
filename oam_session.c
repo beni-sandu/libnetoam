@@ -93,7 +93,7 @@ void *oam_session_run_lbm(void *args) {
     struct itimerspec tx_ts;
     struct sigevent tx_sev;
     struct oam_lb_session current_session;
-    int if_index;
+    int if_index = 0;
     struct ether_header *eh;
     struct oam_lb_pdu *lbm_frame_p;
 
@@ -363,6 +363,11 @@ void *oam_session_run_lbr(void *args) {
         pthread_exit(NULL);
     }
 
+    int p_sfd = 0;
+
+    /* Put interface in promisc mode, for testing only */
+    set_promisc(current_params->if_name, true, &p_sfd);
+
     pr_debug("LBR session configured successfully.\n");
     sem_post(&current_thread->sem);
 
@@ -383,7 +388,7 @@ void *oam_session_run_lbr(void *args) {
                     eh->ether_dhost[3] == src_hwaddr[3] &&
                     eh->ether_dhost[4] == src_hwaddr[4] &&
                     eh->ether_dhost[5] == src_hwaddr[5])) {
-            pr_debug("Destination MAC of received oam frame is for a different interface.\n");
+            pr_debug("Destination MAC of received OAM frame is for a different interface.\n");
             continue;
         }
 

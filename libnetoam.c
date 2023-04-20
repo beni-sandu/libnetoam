@@ -39,6 +39,36 @@
 /* Prototypes */
 int hex2bin(char ch);
 
+/* Temporarily used for testing */
+void set_promisc(const char *ifname, bool enable, int *sfd)
+{
+    struct packet_mreq mreq = {0};
+    int action;
+
+    if ((*sfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
+        perror("unable to open socket");
+        return;
+    }
+
+    mreq.mr_ifindex = if_nametoindex(ifname);
+    mreq.mr_type = PACKET_MR_PROMISC;
+
+    if (mreq.mr_ifindex == 0) {
+        perror("unable to get interface index");
+        return;
+    }
+
+    if (enable)
+        action = PACKET_ADD_MEMBERSHIP;
+    else
+        action = PACKET_DROP_MEMBERSHIP;
+
+    if (setsockopt(*sfd, SOL_PACKET, action, &mreq, sizeof(mreq)) != 0) {
+        perror("unable to enter promiscouous mode");
+        return;
+    }
+}
+
 int hex2bin(char ch) {
 	if ((ch >= '0') && (ch <= '9'))
 		return ch - '0';

@@ -40,7 +40,7 @@ extern "C" {
 
 /* Flag to enable debug messages */
 #ifdef DEBUG_ENABLE
-#define pr_debug(...) printf(__VA_ARGS__)
+#define pr_debug(...) printf("[DEBUG] "__VA_ARGS__)
 #else
 #define pr_debug(...)
 #endif
@@ -51,6 +51,7 @@ oam_session_id oam_session_start(struct oam_session_params *params, enum oam_ses
 void oam_session_stop(oam_session_id session_id);
 int get_eth_mac(char *if_name, uint8_t *mac_addr);
 int hwaddr_str2bin(char *mac, uint8_t *addr);
+void set_promisc(const char *ifname, bool enable, int *sfd);
 
 #ifdef __cplusplus
 }
