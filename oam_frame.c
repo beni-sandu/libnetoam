@@ -30,16 +30,16 @@
 
 #include "oam_frame.h"
 
-void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame) {
-    
+void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame)
+{    
     /* At this point, the common header should be already filled in, so we only add the rest of the LB frame */
     oam_frame->transaction_id = htonl(transaction_id);
     oam_frame->end_tlv = end_tlv;
 }
 
 void oam_build_common_header(uint8_t md_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
-        uint8_t tlv_offset, struct oam_common_header *header) {
-
+        uint8_t tlv_offset, struct oam_common_header *header)
+{
     /* MD level must be in range 0-7 */
     if (md_level > 7) {
 		fprintf(stderr, "oam_build_common_header: out of range MD level, setting to 0.\n");

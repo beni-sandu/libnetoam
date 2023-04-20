@@ -55,8 +55,8 @@ __thread struct sockaddr_ll sll;                            /* RX socket address
 __thread ssize_t numbytes;                                  /* Number of bytes received */
 __thread uint8_t recv_buf[ETH_DATA_LEN];                    /* Buffer for incoming frames */
 
-ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms) {
-
+ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms)
+{
     struct pollfd fds[1];
     struct timespec ts;
     int ret;
@@ -83,8 +83,8 @@ ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_
 }
 
 /* Entry point of a new oam LBM session */
-void *oam_session_run_lbm(void *args) {
-
+void *oam_session_run_lbm(void *args)
+{
     struct oam_thread *current_thread = (struct oam_thread *)args;
     struct oam_session_params *current_params = current_thread->session_params;
     uint8_t src_hwaddr[ETH_ALEN];
@@ -97,20 +97,19 @@ void *oam_session_run_lbm(void *args) {
     struct ether_header *eh;
     struct oam_lb_pdu *lbm_frame_p;
 
-    /* Initialize timer data */
-    tx_timer.session_params = current_params;
-    tx_timer.current_session = &current_session;
-    tx_timer.frame = &lb_frame;
-    tx_timer.eth_ptag = &eth_ptag;
+    /* Initialize some session and timer data */
+    current_session.lbm_tx_timer = &tx_timer;
+    current_session.frame = &lb_frame;
+    current_session.eth_ptag = &eth_ptag;
+    current_session.is_session_configured = false;
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
-    tx_timer.is_session_configured = false;
 
     int flag_enable = 1;
 
     /* Install session cleanup handler */
-    pthread_cleanup_push(lbm_session_cleanup, (void *)&tx_timer);
+    pthread_cleanup_push(lbm_session_cleanup, (void *)&current_session);
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
@@ -125,7 +124,7 @@ void *oam_session_run_lbm(void *args) {
     }
 
     /* Copy libnet context pointer */
-    tx_timer.l = l;
+    current_session.l = l;
 
     /* Get source MAC address */
     if (get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
@@ -157,6 +156,7 @@ void *oam_session_run_lbm(void *args) {
     /* Build rest of the initial LBM frame */
     oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
 
+    /* Build Ethernet header */
     eth_ptag = libnet_build_ethernet(
         (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
         (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
@@ -170,7 +170,7 @@ void *oam_session_run_lbm(void *args) {
     tx_sev.sigev_notify = SIGEV_THREAD;                         /* Notify via thread */
     tx_sev.sigev_notify_function = &lbm_timeout_handler;        /* Handler function */
     tx_sev.sigev_notify_attributes = NULL;                      /* Could be pointer to pthread_attr_t structure */
-    tx_sev.sigev_value.sival_ptr = &tx_timer;                   /* Pointer passed to handler */
+    tx_sev.sigev_value.sival_ptr = &current_session;            /* Pointer passed to handler */
 
     /* Configure TX interval */
     tx_ts.it_interval.tv_sec = current_params->interval_ms / 1000;
@@ -199,9 +199,9 @@ void *oam_session_run_lbm(void *args) {
     }
 
     /* Store the sockfd so we can close it from the cleanup handler */
-    tx_timer.current_session->sockfd = sockfd;
+    current_session.sockfd = sockfd;
 
-    /* Make socket address reusable */
+    /* Make socket address reusable (TODO: check if this is needed for raw sockets, I suspect not) */
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag_enable, sizeof(flag_enable)) < 0) {
         fprintf(stderr, "Can't configure socket address to be reused.\n");
         current_thread->ret = -1;
@@ -233,7 +233,7 @@ void *oam_session_run_lbm(void *args) {
     }
 
     /* Session configuration is successful, return a valid session id */
-    tx_timer.is_session_configured = true;
+    current_session.is_session_configured = true;
     pr_debug("LBM session configured successfully.\n");
     sem_post(&current_thread->sem);
 
@@ -260,13 +260,8 @@ void *oam_session_run_lbm(void *args) {
             /* Get aprox timestamp of received frame */
             clock_gettime(CLOCK_REALTIME, &current_session.time_received);
 
-            /* Check destination MAC just in case */
-            if (!(eh->ether_dhost[0] == src_hwaddr[0] &&
-                    eh->ether_dhost[1] == src_hwaddr[1] &&
-                    eh->ether_dhost[2] == src_hwaddr[2] &&
-                    eh->ether_dhost[3] == src_hwaddr[3] &&
-                    eh->ether_dhost[4] == src_hwaddr[4] &&
-                    eh->ether_dhost[5] == src_hwaddr[5])) {
+            /* If interface is in promisc mode, check for wrong destination ETH address */
+            if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0) {
                 pr_debug("Destination MAC of received OAM frame is for a different interface.\n");
                 continue;
             }
@@ -289,9 +284,9 @@ void *oam_session_run_lbm(void *args) {
     return NULL;
 }
 
-/* Entry point of a new oam LBR session */
-void *oam_session_run_lbr(void *args) {
-
+/* Entry point of a new OAM LBR session */
+void *oam_session_run_lbr(void *args)
+{
     struct oam_thread *current_thread = (struct oam_thread *)args;
     struct oam_session_params *current_params = current_thread->session_params;
     uint8_t src_hwaddr[ETH_ALEN];
@@ -332,7 +327,7 @@ void *oam_session_run_lbr(void *args) {
         pthread_exit(NULL);
     }
 
-    /* Make socket address reusable */
+    /* Make socket address reusable (TODO: check if this is needed for raw sockets, I suspect not) */
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag_enable, sizeof(flag_enable)) < 0) {
         fprintf(stderr, "Can't configure socket address to be reused.\n");
         current_thread->ret = -1;
@@ -381,18 +376,13 @@ void *oam_session_run_lbr(void *args) {
         pr_debug("Received frame on LBR session, %ld bytes.\n", numbytes);
         eh = (struct ether_header *)recv_buf;
 
-        /* Check destination MAC just in case */
-        if (!(eh->ether_dhost[0] == src_hwaddr[0] &&
-                    eh->ether_dhost[1] == src_hwaddr[1] &&
-                    eh->ether_dhost[2] == src_hwaddr[2] &&
-                    eh->ether_dhost[3] == src_hwaddr[3] &&
-                    eh->ether_dhost[4] == src_hwaddr[4] &&
-                    eh->ether_dhost[5] == src_hwaddr[5])) {
+        /* If interface is in promisc mode, check for wrong destination ETH address */
+        if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0) {
             pr_debug("Destination MAC of received OAM frame is for a different interface.\n");
             continue;
         }
 
-        /* If frame is not oam LBM, discard it */
+        /* If frame is not OAM LBM, discard it */
         lbr_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
         if (lbr_frame_p->oam_header.opcode != OAM_OP_LBM)
             continue;
@@ -402,10 +392,9 @@ void *oam_session_run_lbr(void *args) {
         lb_frame.oam_header.opcode = OAM_OP_LBR;
 
         /* Copy destination MAC address */
-        for (int i = 0; i < ETH_ALEN; i++)
-            dst_hwaddr[i] = eh->ether_shost[i];
+        memcpy(dst_hwaddr, eh->ether_shost, ETH_ALEN);
 
-        /* Build everything for the LBR frame that we send as a reply */
+        /* Build ETH header for the LBR frame that we send as a reply */
         eth_ptag = libnet_build_ethernet(
             (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
             (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
@@ -415,7 +404,7 @@ void *oam_session_run_lbr(void *args) {
             l,                                                      /* libnet handle */
             eth_ptag);                                              /* libnet tag */
         
-        /* Send oam frame on wire */
+        /* Send OAM frame on wire */
         c = libnet_write(l);
 
         if (c == -1) {
@@ -432,8 +421,8 @@ void *oam_session_run_lbr(void *args) {
  * Create a new oam session, returns a session id
  * on successful creation, -1 otherwise
  */
-oam_session_id oam_session_start(struct oam_session_params *params, enum oam_session_type session_type) {
-    
+oam_session_id oam_session_start(struct oam_session_params *params, enum oam_session_type session_type)
+{    
     pthread_t session_id;
     int ret;
     struct oam_thread new_thread;
@@ -451,7 +440,7 @@ oam_session_id oam_session_start(struct oam_session_params *params, enum oam_ses
             ret = pthread_create(&session_id, NULL, oam_session_run_lbr, (void *)&new_thread);
             break;
         default:
-            fprintf(stderr, "Invalid oam session type.\n");
+            fprintf(stderr, "Invalid OAM session type.\n");
     }
 
     if (ret) {
@@ -468,23 +457,22 @@ oam_session_id oam_session_start(struct oam_session_params *params, enum oam_ses
 }
 
 /* Stop a oam session */
-void oam_session_stop(oam_session_id session_id) {
-
+void oam_session_stop(oam_session_id session_id)
+{
     if (session_id > 0) {
-        pr_debug("Stopping oam session: %ld\n", session_id);
+        pr_debug("Stopping OAM session: %ld\n", session_id);
         pthread_cancel(session_id);
         pthread_join(session_id, NULL);
     }
 }
 
-void lbm_timeout_handler(union sigval sv) {
-
-    struct oam_lbm_timer *timer_data = sv.sival_ptr;
+void lbm_timeout_handler(union sigval sv)
+{
+    struct oam_lb_session *current_session = sv.sival_ptr;
     int c;
-    struct oam_lb_pdu *lbm_frame = timer_data->frame;
-    libnet_ptag_t *eth_tag = timer_data->eth_ptag;
-    libnet_t *l = timer_data->l;
-    struct oam_lb_session *current_session = timer_data->current_session;
+    struct oam_lb_pdu *lbm_frame = current_session->frame;
+    libnet_ptag_t *eth_tag = current_session->eth_ptag;
+    libnet_t *l = current_session->l;
 
     /* Update transaction id */
     oam_build_lb_frame(current_session->transaction_id, 0, lbm_frame);
@@ -492,7 +480,7 @@ void lbm_timeout_handler(union sigval sv) {
     /* Update rest of the frame */
     oam_update_lb_frame(lbm_frame, current_session, eth_tag, l);
 
-    /* Send oam frame on wire */
+    /* Send OAM frame on wire */
     c = libnet_write(l);
 
     if (c == -1) {
@@ -507,13 +495,13 @@ void lbm_timeout_handler(union sigval sv) {
     current_session->transaction_id++;
 }
 
-void lbm_session_cleanup(void *args) {
-    
-    struct oam_lbm_timer *timer = (struct oam_lbm_timer *)args;
+void lbm_session_cleanup(void *args)
+{    
+    struct oam_lb_session *current_session = (struct oam_lb_session *)args;
 
     /* Cleanup timer data */
-    if (timer->is_timer_created == true) {
-        timer_delete(timer->timer_id);
+    if (current_session->lbm_tx_timer->is_timer_created == true) {
+        timer_delete(current_session->lbm_tx_timer->timer_id);
         
         /*
          * Temporary workaround for C++ programs, seems sometimes the timer doesn't 
@@ -523,18 +511,18 @@ void lbm_session_cleanup(void *args) {
     }
     
     /* Clean up libnet context */
-    if (timer->l != NULL)
-        libnet_destroy(timer->l);
+    if (current_session->l != NULL)
+        libnet_destroy(current_session->l);
     
     /* Close socket */
-    if (timer->current_session->sockfd != 0)
-        close(timer->current_session->sockfd);
+    if (current_session->sockfd != 0)
+        close(current_session->sockfd);
 
     /* 
      * If a session is not successfully configured, we don't call pthread_join on it,
      * only exit using pthread_exit. Calling pthread_detach here should automatically
      * release resources for unconfigured sessions.
      */
-    if (timer->is_session_configured == false)
+    if (current_session->is_session_configured == false)
         pthread_detach(pthread_self());
 }

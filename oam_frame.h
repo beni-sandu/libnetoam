@@ -106,8 +106,8 @@ struct oam_lb_pdu {
 
 /* Wrapper to update OAM LB frame */
 static inline void oam_update_lb_frame(struct oam_lb_pdu *frame, struct oam_lb_session *current_session,
-									   libnet_ptag_t *eth_tag, libnet_t *l) {
-
+									   libnet_ptag_t *eth_tag, libnet_t *l)
+{
 	*eth_tag = libnet_build_ethernet(
 		current_session->dst_mac,			/* Destination MAC */
 		current_session->src_mac,			/* MAC of local interface */

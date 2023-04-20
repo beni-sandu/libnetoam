@@ -70,19 +70,18 @@ struct oam_lb_session {
     int sockfd;
     struct timespec time_sent;
     struct timespec time_received;
+    bool is_session_configured;
+    struct oam_lb_pdu *frame;                                   /* Pointer to lbm frame */
+    libnet_ptag_t *eth_ptag;                                    /* Pointer to libnet ETH tag */
+    libnet_t *l;                                                /* libnet context */
+    struct oam_lbm_timer *lbm_tx_timer;                         /* Pointer to LBM tx timer */
 };
 
 /* Data passed to per session timer */
 struct oam_lbm_timer {
     bool is_timer_created;
-    bool is_session_configured;
     timer_t timer_id;                                           /* POSIX interval timer id */
-    struct oam_session_params *session_params;                  /* pointer to current session parameters */
-    struct oam_lb_pdu *frame;                                   /* pointer to lbm frame */
-    libnet_ptag_t *eth_ptag;
-    libnet_t *l;
     struct itimerspec *ts;
-    struct oam_lb_session *current_session;                     /* Pointer to current OAM LB session */
 };
 
 #endif //_OAM_SESSION_H

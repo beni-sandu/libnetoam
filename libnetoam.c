@@ -69,7 +69,8 @@ void set_promisc(const char *ifname, bool enable, int *sfd)
     }
 }
 
-int hex2bin(char ch) {
+int hex2bin(char ch)
+{
 	if ((ch >= '0') && (ch <= '9'))
 		return ch - '0';
 	ch = tolower(ch);
@@ -78,7 +79,8 @@ int hex2bin(char ch) {
 	return EXIT_FAILURE;
 }
 
-int hwaddr_str2bin(char *mac, uint8_t *addr) {
+int hwaddr_str2bin(char *mac, uint8_t *addr)
+{
 	int i;
 
 	for (i = 0; i < ETH_ALEN; i++) {
@@ -98,8 +100,8 @@ int hwaddr_str2bin(char *mac, uint8_t *addr) {
 	return EXIT_SUCCESS;
 }
 
-int get_eth_mac(char *if_name, uint8_t *mac_addr) {
-    
+int get_eth_mac(char *if_name, uint8_t *mac_addr)
+{
     struct ifaddrs *addrs, *ifp;
     struct sockaddr_ll *sa;
 
@@ -134,7 +136,7 @@ int get_eth_mac(char *if_name, uint8_t *mac_addr) {
 }
 
 /* Return library version */
-const char *netoam_lib_version(void) {
-
+const char *netoam_lib_version(void)
+{
     return ("libnetoam version "LIBNETOAM_VERSION);
 }
