@@ -55,7 +55,9 @@ __thread struct sockaddr_ll sll;                            /* RX socket address
 __thread ssize_t numbytes;                                  /* Number of bytes received */
 __thread uint8_t recv_buf[ETH_DATA_LEN];                    /* Buffer for incoming frames */
 __thread struct cb_status callback_status;
-__thread uint32_t lbm_missed_pings = 0;
+__thread uint32_t lbm_missed_pings;
+__thread uint32_t lbm_replied_pings;
+__thread bool is_lbm_session_recovered;
 
 ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms)
 {
@@ -107,6 +109,9 @@ void *oam_session_run_lbm(void *args)
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
+    lbm_missed_pings = 0;
+    lbm_replied_pings = 0;
+    is_lbm_session_recovered = true;
 
     int flag_enable = 1;
 
@@ -258,6 +263,8 @@ void *oam_session_run_lbm(void *args)
         /* We didn't get any response in the expected interval */
         if (numbytes == -2) {
             lbm_missed_pings++;
+            lbm_replied_pings = 0;
+            is_lbm_session_recovered = false;
             printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
         }
 
@@ -294,6 +301,25 @@ void *oam_session_run_lbm(void *args)
             lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
             if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
                 continue;
+            
+            /* We are receiving pings, reset missed counter */
+            lbm_missed_pings = 0;
+            lbm_replied_pings++;
+
+            /* If we missed pings before, we are on a recovery path */
+            if (current_params->ping_recovery_threshold > 0) {
+                if (is_lbm_session_recovered == false) {
+
+                    /* We reached recovery threshold, use callback */
+                    if (current_params->ping_recovery_threshold == lbm_replied_pings) {
+                        is_lbm_session_recovered = true;
+                        if (current_params->callback != NULL) {
+                            callback_status.cb_ret = OAM_CB_RECOVER_PING_THRESH;
+                            current_params->callback(&callback_status);
+                        }
+                    }
+                }
+            }
 
             printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
                     eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
