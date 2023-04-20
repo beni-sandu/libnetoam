@@ -34,7 +34,7 @@
 /* Add a typedef for a OAM session id */
 typedef long int oam_session_id;
 
-/* Types of oam sessions, we only implement ETH-LB for the moment */
+/* Types of OAM sessions, we only implement ETH-LB for the moment */
 enum oam_session_type {
     OAM_SESSION_LBM = 0,
     OAM_SESSION_LBR = 1,
@@ -57,10 +57,20 @@ struct cb_status {
     struct oam_session_params *session_params;                  /* Pointer to current session parameters */
 };
 
+enum oam_cb_ret {
+    OAM_CB_DEFAULT                  = 0,
+    OAM_CB_MISSED_PING_THRESH       = 1,
+    OAM_CB_RECOVER_PING_THRESH      = 2,
+};
+
 struct oam_session_params {
     char if_name[IF_NAME_SIZE];                                 /* Network interface name */
     char dst_mac[ETH_STR_LEN];                                  /* Destination MAC address in string format */
-    uint16_t interval_ms;                                       /* Ping interval in miliseconds */
+    uint32_t interval_ms;                                       /* Ping interval in miliseconds */
+    uint32_t missed_consecutive_ping_threshold;                 /* Counter for consecutive missed pings */
+    uint32_t ping_recovery_threshold;                           /* Recovery threshold counter */
+    bool is_oneshot;                                            /* Flag for oneshot operation */
+    void (*callback)(struct cb_status *status);                 /* Callback function */
 };
 
 struct oam_lb_session {

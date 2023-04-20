@@ -54,6 +54,8 @@ __thread int sockfd;                                        /* RX socket file de
 __thread struct sockaddr_ll sll;                            /* RX socket address */
 __thread ssize_t numbytes;                                  /* Number of bytes received */
 __thread uint8_t recv_buf[ETH_DATA_LEN];                    /* Buffer for incoming frames */
+__thread struct cb_status callback_status;
+__thread uint32_t lbm_missed_pings = 0;
 
 ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms)
 {
@@ -107,6 +109,9 @@ void *oam_session_run_lbm(void *args)
     tx_timer.is_timer_created = false;
 
     int flag_enable = 1;
+
+    callback_status.cb_ret = OAM_CB_DEFAULT;
+    callback_status.session_params = current_params;
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lbm_session_cleanup, (void *)&current_session);
@@ -251,8 +256,27 @@ void *oam_session_run_lbm(void *args)
         numbytes = recvfrom_ppoll(sockfd, recv_buf, ETH_DATA_LEN, current_params->interval_ms);
 
         /* We didn't get any response in the expected interval */
-        if (numbytes == -2)
+        if (numbytes == -2) {
+            lbm_missed_pings++;
             printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
+        }
+
+        /* If we reached the missed pings threshold, use callback */
+        if (current_params->missed_consecutive_ping_threshold > 0) {
+            if (lbm_missed_pings == current_params->missed_consecutive_ping_threshold) {
+                if (current_params->callback != NULL) {
+                    callback_status.cb_ret = OAM_CB_MISSED_PING_THRESH;
+                    current_params->callback(&callback_status);
+                }
+
+                /* Reset counter */
+                lbm_missed_pings = 0;
+
+                /* If it is oneshot operation, close session */
+                if (current_params->is_oneshot == true)
+                    pthread_exit(NULL);
+            }
+        }
 
         if (numbytes > 0) {
             eh = (struct ether_header *)recv_buf;
