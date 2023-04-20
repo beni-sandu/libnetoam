@@ -40,7 +40,7 @@
 /* Forward declarations */
 void lbm_timeout_handler(union sigval sv);
 int oam_update_timer(int interval, struct itimerspec *ts, struct oam_lbm_timer *timer_data);
-void lbm_session_cleanup(void *args);
+void lb_session_cleanup(void *args);
 ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms);
 void *oam_session_run_lbr(void *args);
 void *oam_session_run_lbm(void *args);
@@ -58,6 +58,7 @@ __thread struct cb_status callback_status;
 __thread uint32_t lbm_missed_pings;
 __thread uint32_t lbm_replied_pings;
 __thread bool is_lbm_session_recovered;
+__thread libnet_ptag_t eth_ptag = 0;
 
 ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms)
 {
@@ -93,7 +94,6 @@ void *oam_session_run_lbm(void *args)
     struct oam_session_params *current_params = current_thread->session_params;
     uint8_t src_hwaddr[ETH_ALEN];
     uint8_t dst_hwaddr[ETH_ALEN];
-    libnet_ptag_t eth_ptag = 0;
     struct itimerspec tx_ts;
     struct sigevent tx_sev;
     struct oam_lb_session current_session;
@@ -119,7 +119,7 @@ void *oam_session_run_lbm(void *args)
     callback_status.session_params = current_params;
 
     /* Install session cleanup handler */
-    pthread_cleanup_push(lbm_session_cleanup, (void *)&current_session);
+    pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
@@ -244,6 +244,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Session configuration is successful, return a valid session id */
     current_session.is_session_configured = true;
+
     pr_debug("LBM session configured successfully.\n");
     sem_post(&current_thread->sem);
 
@@ -345,9 +346,11 @@ void *oam_session_run_lbr(void *args)
     int if_index;
     struct ether_header *eh;
     struct oam_lb_pdu *lbr_frame_p;
-    libnet_ptag_t eth_ptag = 0;
     int c;
+    struct oam_lb_session current_session;
 
+    /* Install session cleanup handler */
+    pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
@@ -369,6 +372,9 @@ void *oam_session_run_lbr(void *args)
         pthread_exit(NULL);
     }
 
+    /* Copy libnet pointer */
+    current_session.l = l;
+
     /* Create a raw socket for incoming frames */
     if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
         perror("socket");
@@ -376,6 +382,9 @@ void *oam_session_run_lbr(void *args)
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
+
+    /* Copy socket fd */
+    current_session.sockfd = sockfd;
 
     /* Make socket address reusable (TODO: check if this is needed for raw sockets, I suspect not) */
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag_enable, sizeof(flag_enable)) < 0) {
@@ -412,6 +421,9 @@ void *oam_session_run_lbr(void *args)
 
     /* Put interface in promisc mode, for testing only */
     set_promisc(current_params->if_name, true, &p_sfd);
+
+    /* Session configuration is successful, return a valid session id */
+    current_session.is_session_configured = true;
 
     pr_debug("LBR session configured successfully.\n");
     sem_post(&current_thread->sem);
@@ -464,6 +476,9 @@ void *oam_session_run_lbr(void *args)
 
     } // while (true)
 
+    pthread_cleanup_pop(0);
+
+    /* Should never reach this */
     return NULL;
 }
 
@@ -545,19 +560,21 @@ void lbm_timeout_handler(union sigval sv)
     current_session->transaction_id++;
 }
 
-void lbm_session_cleanup(void *args)
+void lb_session_cleanup(void *args)
 {    
     struct oam_lb_session *current_session = (struct oam_lb_session *)args;
 
     /* Cleanup timer data */
-    if (current_session->lbm_tx_timer->is_timer_created == true) {
-        timer_delete(current_session->lbm_tx_timer->timer_id);
+    if (current_session->lbm_tx_timer != NULL) {
+        if (current_session->lbm_tx_timer->is_timer_created == true) {
+            timer_delete(current_session->lbm_tx_timer->timer_id);
         
-        /*
-         * Temporary workaround for C++ programs, seems sometimes the timer doesn't 
-         * get disarmed in time, and tries to use memory that was already freed.
-         */
-        usleep(100000);
+            /*
+            * Temporary workaround for C++ programs, seems sometimes the timer doesn't 
+            * get disarmed in time, and tries to use memory that was already freed.
+            */
+            usleep(100000);
+        }
     }
     
     /* Clean up libnet context */
