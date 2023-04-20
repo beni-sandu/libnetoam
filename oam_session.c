@@ -24,6 +24,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define _GNU_SOURCE
+
 #include <pthread.h>
 #include <stdio.h>
 #include <libnet.h>
@@ -31,20 +33,23 @@
 #include <linux/if_packet.h>
 #include <poll.h>
 
-#include "cfm_session.h"
-#include "cfm_frame.h"
-#include "libnetcfm.h"
+#include "oam_session.h"
+#include "oam_frame.h"
+#include "libnetoam.h"
 
 /* Forward declarations */
 void lbm_timeout_handler(union sigval sv);
-int cfm_update_timer(int interval, struct itimerspec *ts, struct cfm_lbm_timer *timer_data);
+int oam_update_timer(int interval, struct itimerspec *ts, struct oam_lbm_timer *timer_data);
 void lbm_session_cleanup(void *args);
+ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms);
+void *oam_session_run_lbr(void *args);
+void *oam_session_run_lbm(void *args);
 
 /* Per thread variables */
 __thread libnet_t *l;                                       /* libnet context */
 __thread char libnet_errbuf[LIBNET_ERRBUF_SIZE];            /* libnet error buffer */
-__thread struct cfm_lbm_timer tx_timer;                     /* TX timer */
-__thread struct cfm_lb_pdu lb_frame;
+__thread struct oam_lbm_timer tx_timer;                     /* TX timer */
+__thread struct oam_lb_pdu lb_frame;
 __thread int sockfd;                                        /* RX socket file descriptor */
 __thread struct sockaddr_ll sll;                            /* RX socket address */
 __thread ssize_t numbytes;                                  /* Number of bytes received */
@@ -77,20 +82,20 @@ ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_
     return EXIT_FAILURE;
 }
 
-/* Entry point of a new CFM LBM session */
-void *cfm_session_run_lbm(void *args) {
+/* Entry point of a new oam LBM session */
+void *oam_session_run_lbm(void *args) {
 
-    struct cfm_thread *current_thread = (struct cfm_thread *)args;
-    struct cfm_session_params *current_params = current_thread->session_params;
+    struct oam_thread *current_thread = (struct oam_thread *)args;
+    struct oam_session_params *current_params = current_thread->session_params;
     uint8_t src_hwaddr[ETH_ALEN];
     uint8_t dst_hwaddr[ETH_ALEN];
     libnet_ptag_t eth_ptag = 0;
     struct itimerspec tx_ts;
     struct sigevent tx_sev;
-    struct cfm_lb_session current_session;
+    struct oam_lb_session current_session;
     int if_index;
     struct ether_header *eh;
-    struct cfm_lb_pdu *lbm_frame_p;
+    struct oam_lb_pdu *lbm_frame_p;
 
     /* Initialize timer data */
     tx_timer.session_params = current_params;
@@ -146,16 +151,16 @@ void *cfm_session_run_lbm(void *args) {
     srandom((uint64_t)current_params);
     current_session.transaction_id = random();
 
-    /* Build CFM common header for LMB frames */
-    cfm_build_common_header(0, 0, CFM_OP_LBM, 0, 4, &lb_frame.cfm_header);
+    /* Build oam common header for LMB frames */
+    oam_build_common_header(0, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
 
     /* Build rest of the initial LBM frame */
-    cfm_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
+    oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
 
     eth_ptag = libnet_build_ethernet(
         (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
         (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
-        ETHERTYPE_CFM,                                          /* Ethernet type */
+        ETHERTYPE_OAM,                                          /* Ethernet type */
         (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
         sizeof(lb_frame),                                       /* Payload size */
         l,                                                      /* libnet handle */
@@ -186,7 +191,7 @@ void *cfm_session_run_lbm(void *args) {
     pr_debug("TX timer ID: %p\n", tx_timer.timer_id);
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_CFM))) == -1) { // do I need another protocol here?
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
         perror("socket");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -212,11 +217,11 @@ void *cfm_session_run_lbm(void *args) {
         pthread_exit(NULL);
     }
 
-    /* Setup socket address (is this enough?)*/
+    /* Setup socket address */
     memset(&sll, 0, sizeof(struct sockaddr_ll));
     sll.sll_family = AF_PACKET;
     sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETHERTYPE_CFM);
+    sll.sll_protocol = htons(ETHERTYPE_OAM);
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
@@ -261,13 +266,13 @@ void *cfm_session_run_lbm(void *args) {
                     eh->ether_dhost[3] == src_hwaddr[3] &&
                     eh->ether_dhost[4] == src_hwaddr[4] &&
                     eh->ether_dhost[5] == src_hwaddr[5])) {
-                pr_debug("Destination MAC of received CFM frame is for a different interface.\n");
+                pr_debug("Destination MAC of received oam frame is for a different interface.\n");
                 continue;
             }
 
-            /* If frame is not CFM LBR, discard it */
-            lbm_frame_p = (struct cfm_lb_pdu *)(recv_buf + sizeof(struct ether_header));
-            if (lbm_frame_p->cfm_header.opcode != CFM_OP_LBR)
+            /* If frame is not oam LBR, discard it */
+            lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+            if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
                 continue;
 
             printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
@@ -283,17 +288,17 @@ void *cfm_session_run_lbm(void *args) {
     return NULL;
 }
 
-/* Entry point of a new CFM LBR session */
-void *cfm_session_run_lbr(void *args) {
+/* Entry point of a new oam LBR session */
+void *oam_session_run_lbr(void *args) {
 
-    struct cfm_thread *current_thread = (struct cfm_thread *)args;
-    struct cfm_session_params *current_params = current_thread->session_params;
+    struct oam_thread *current_thread = (struct oam_thread *)args;
+    struct oam_session_params *current_params = current_thread->session_params;
     uint8_t src_hwaddr[ETH_ALEN];
     uint8_t dst_hwaddr[ETH_ALEN];
     int flag_enable = 1;
     int if_index;
     struct ether_header *eh;
-    struct cfm_lb_pdu *lbr_frame_p;
+    struct oam_lb_pdu *lbr_frame_p;
     libnet_ptag_t eth_ptag = 0;
     int c;
 
@@ -319,7 +324,7 @@ void *cfm_session_run_lbr(void *args) {
     }
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_CFM))) == -1) {
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
         perror("socket");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -346,7 +351,7 @@ void *cfm_session_run_lbr(void *args) {
     memset(&sll, 0, sizeof(struct sockaddr_ll));
     sll.sll_family = AF_PACKET;
     sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETHERTYPE_CFM);
+    sll.sll_protocol = htons(ETHERTYPE_OAM);
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
@@ -376,18 +381,18 @@ void *cfm_session_run_lbr(void *args) {
                     eh->ether_dhost[3] == src_hwaddr[3] &&
                     eh->ether_dhost[4] == src_hwaddr[4] &&
                     eh->ether_dhost[5] == src_hwaddr[5])) {
-            pr_debug("Destination MAC of received CFM frame is for a different interface.\n");
+            pr_debug("Destination MAC of received oam frame is for a different interface.\n");
             continue;
         }
 
-        /* If frame is not CFM LBM, discard it */
-        lbr_frame_p = (struct cfm_lb_pdu *)(recv_buf + sizeof(struct ether_header));
-        if (lbr_frame_p->cfm_header.opcode != CFM_OP_LBM)
+        /* If frame is not oam LBM, discard it */
+        lbr_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+        if (lbr_frame_p->oam_header.opcode != OAM_OP_LBM)
             continue;
 
-        /* Except for the LBR Opcode, all CFM specific PDU data is copied from the received LBM frame */
-        memcpy(&lb_frame, lbr_frame_p, sizeof(struct cfm_lb_pdu));
-        lb_frame.cfm_header.opcode = CFM_OP_LBR;
+        /* Except for the LBR Opcode, all oam specific PDU data is copied from the received LBM frame */
+        memcpy(&lb_frame, lbr_frame_p, sizeof(struct oam_lb_pdu));
+        lb_frame.oam_header.opcode = OAM_OP_LBR;
 
         /* Copy destination MAC address */
         for (int i = 0; i < ETH_ALEN; i++)
@@ -397,13 +402,13 @@ void *cfm_session_run_lbr(void *args) {
         eth_ptag = libnet_build_ethernet(
             (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
             (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
-            ETHERTYPE_CFM,                                          /* Ethernet type */
+            ETHERTYPE_OAM,                                          /* Ethernet type */
             (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
             sizeof(lb_frame),                                       /* Payload size */
             l,                                                      /* libnet handle */
             eth_ptag);                                              /* libnet tag */
         
-        /* Send CFM frame on wire */
+        /* Send oam frame on wire */
         c = libnet_write(l);
 
         if (c == -1) {
@@ -417,14 +422,14 @@ void *cfm_session_run_lbr(void *args) {
 }
 
 /* 
- * Create a new CFM session, returns a session id
+ * Create a new oam session, returns a session id
  * on successful creation, -1 otherwise
  */
-cfm_session_id cfm_session_start(struct cfm_session_params *params, enum cfm_session_type session_type) {
+oam_session_id oam_session_start(struct oam_session_params *params, enum oam_session_type session_type) {
     
     pthread_t session_id;
     int ret;
-    struct cfm_thread new_thread;
+    struct oam_thread new_thread;
 
     new_thread.session_params = params;
     new_thread.ret = 0;
@@ -432,18 +437,18 @@ cfm_session_id cfm_session_start(struct cfm_session_params *params, enum cfm_ses
     sem_init(&new_thread.sem, 0, 0);
 
     switch (session_type) {
-        case CFM_SESSION_LBM:
-            ret = pthread_create(&session_id, NULL, cfm_session_run_lbm, (void *)&new_thread);
+        case OAM_SESSION_LBM:
+            ret = pthread_create(&session_id, NULL, oam_session_run_lbm, (void *)&new_thread);
             break;
-        case CFM_SESSION_LBR:
-            ret = pthread_create(&session_id, NULL, cfm_session_run_lbr, (void *)&new_thread);
+        case OAM_SESSION_LBR:
+            ret = pthread_create(&session_id, NULL, oam_session_run_lbr, (void *)&new_thread);
             break;
         default:
-            fprintf(stderr, "Invalid CFM session type.\n");
+            fprintf(stderr, "Invalid oam session type.\n");
     }
 
     if (ret) {
-        fprintf(stderr, "cfm_session_start for interface: %s failed, err: %d\n", params->if_name, ret);
+        fprintf(stderr, "oam_session_start for interface: %s failed, err: %d\n", params->if_name, ret);
         return -1;
     }
 
@@ -455,11 +460,11 @@ cfm_session_id cfm_session_start(struct cfm_session_params *params, enum cfm_ses
     return session_id;
 }
 
-/* Stop a CFM session */
-void cfm_session_stop(cfm_session_id session_id) {
+/* Stop a oam session */
+void oam_session_stop(oam_session_id session_id) {
 
     if (session_id > 0) {
-        pr_debug("Stopping CFM session: %ld\n", session_id);
+        pr_debug("Stopping oam session: %ld\n", session_id);
         pthread_cancel(session_id);
         pthread_join(session_id, NULL);
     }
@@ -467,20 +472,20 @@ void cfm_session_stop(cfm_session_id session_id) {
 
 void lbm_timeout_handler(union sigval sv) {
 
-    struct cfm_lbm_timer *timer_data = sv.sival_ptr;
+    struct oam_lbm_timer *timer_data = sv.sival_ptr;
     int c;
-    struct cfm_lb_pdu *lbm_frame = timer_data->frame;
+    struct oam_lb_pdu *lbm_frame = timer_data->frame;
     libnet_ptag_t *eth_tag = timer_data->eth_ptag;
     libnet_t *l = timer_data->l;
-    struct cfm_lb_session *current_session = timer_data->current_session;
+    struct oam_lb_session *current_session = timer_data->current_session;
 
     /* Update transaction id */
-    cfm_build_lb_frame(current_session->transaction_id, 0, lbm_frame);
+    oam_build_lb_frame(current_session->transaction_id, 0, lbm_frame);
 
     /* Update rest of the frame */
-    cfm_update_lb_frame(lbm_frame, current_session, eth_tag, l);
+    oam_update_lb_frame(lbm_frame, current_session, eth_tag, l);
 
-    /* Send CFM frame on wire */
+    /* Send oam frame on wire */
     c = libnet_write(l);
 
     if (c == -1) {
@@ -497,7 +502,7 @@ void lbm_timeout_handler(union sigval sv) {
 
 void lbm_session_cleanup(void *args) {
     
-    struct cfm_lbm_timer *timer = (struct cfm_lbm_timer *)args;
+    struct oam_lbm_timer *timer = (struct oam_lbm_timer *)args;
 
     /* Cleanup timer data */
     if (timer->is_timer_created == true) {

@@ -34,7 +34,10 @@
 #include <net/ethernet.h>
 #include <ctype.h>
 
-#include "libnetcfm.h"
+#include "libnetoam.h"
+
+/* Prototypes */
+int hex2bin(char ch);
 
 int hex2bin(char ch) {
 	if ((ch >= '0') && (ch <= '9'))
@@ -135,7 +138,7 @@ int get_eth_index(char *if_name, int *if_index) {
 }
 
 /* Return library version */
-const char *netcfm_lib_version(void) {
+const char *netoam_lib_version(void) {
 
-    return ("libnetcfm version "LIBNETCFM_VERSION);
+    return ("libnetoam version "LIBNETOAM_VERSION);
 }

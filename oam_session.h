@@ -24,44 +24,46 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _CFM_SESSION_H
-#define _CFM_SESSION_H
+#ifndef _OAM_SESSION_H
+#define _OAM_SESSION_H
 
 #include <semaphore.h>
 #include <stdbool.h>
 #include <libnet.h>
 
-/* Add a typedef for a CFM session id */
-typedef long int cfm_session_id;
+/* Add a typedef for a OAM session id */
+typedef long int oam_session_id;
 
-/* Types of CFM sessions, we only implement ETH-LB for the moment */
-enum cfm_session_type {
-    CFM_SESSION_LBM = 0,
-    CFM_SESSION_LBR = 1,
+/* Types of oam sessions, we only implement ETH-LB for the moment */
+enum oam_session_type {
+    OAM_SESSION_LBM = 0,
+    OAM_SESSION_LBR = 1,
 };
 
 #define IF_NAME_SIZE 32
 #define NET_NS_SIZE 32
 #define MAX_PATH 512
+#define ETH_STR_LEN 18
 
-struct cfm_thread {
+
+struct oam_thread {
     sem_t sem;
-    struct cfm_session_params *session_params;
+    struct oam_session_params *session_params;
     int ret;
 };
 
 struct cb_status {
     int cb_ret;                                                 /* Callback return value */
-    struct cfm_session_params *session_params;                  /* Pointer to current session parameters */
+    struct oam_session_params *session_params;                  /* Pointer to current session parameters */
 };
 
-struct cfm_session_params {
+struct oam_session_params {
     char if_name[IF_NAME_SIZE];                                 /* Network interface name */
-    char *dst_mac;                                              /* Destination MAC address */
+    char dst_mac[ETH_STR_LEN];                                  /* Destination MAC address in string format */
     uint16_t interval_ms;                                       /* Ping interval in miliseconds */
 };
 
-struct cfm_lb_session {
+struct oam_lb_session {
     uint8_t *src_mac;
     uint8_t *dst_mac;
     uint32_t transaction_id;
@@ -71,16 +73,16 @@ struct cfm_lb_session {
 };
 
 /* Data passed to per session timer */
-struct cfm_lbm_timer {
+struct oam_lbm_timer {
     bool is_timer_created;
     bool is_session_configured;
     timer_t timer_id;                                           /* POSIX interval timer id */
-    struct cfm_session_params *session_params;                  /* pointer to current session parameters */
-    struct cfm_lb_pdu *frame;                                   /* pointer to lbm frame */
+    struct oam_session_params *session_params;                  /* pointer to current session parameters */
+    struct oam_lb_pdu *frame;                                   /* pointer to lbm frame */
     libnet_ptag_t *eth_ptag;
     libnet_t *l;
     struct itimerspec *ts;
-    struct cfm_lb_session *current_session;                     /* Pointer to current CFM LB session */
+    struct oam_lb_session *current_session;                     /* Pointer to current OAM LB session */
 };
 
-#endif //_CFM_SESSION_H
+#endif //_OAM_SESSION_H

@@ -24,28 +24,28 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _CFM_FRAME_H
-#define _CFM_FRAME_H
+#ifndef _OAM_FRAME_H
+#define _OAM_FRAME_H
 
 #include <stdint.h>
 #include <net/ethernet.h>
 #include <libnet.h>
 #include <pthread.h>
 
-#include "cfm_session.h"
+#include "oam_session.h"
 
 /* 
- * CFM OpCodes
+ * OAM OpCodes
  *
  * We only implement ETH-LB for the moment, but let's create an enum
  * and add some more for completion (from IEEE 802.1).
  */
-enum cfm_opcode {
-	CFM_OP_CCM = 1,
-	CFM_OP_LBR = 2,
-	CFM_OP_LBM = 3,
-	CFM_OP_LTR = 4,
-	CFM_OP_LTM = 5,
+enum oam_opcode {
+	OAM_OP_CCM = 1,
+	OAM_OP_LBR = 2,
+	OAM_OP_LBM = 3,
+	OAM_OP_LTR = 4,
+	OAM_OP_LTM = 5,
 };
 
 /* 
@@ -53,19 +53,19 @@ enum cfm_opcode {
  * In an End TLV, Type = 0, and both Length and Value fields are not used.
  * Below TLV types are from IEEE 802.1.
  */
-enum cfm_tlv_type {
-	CFM_TLV_END = 0,
-	CFM_TLV_DATA = 3,
-	CFM_TLV_REPLY_INGRESS = 5,
-	CFM_TLV_REPLY_EGRESS = 6,
-	CFM_TLV_LTM_EGRESS = 7,
-	CFM_TLV_LTR_EGRESS = 8,
+enum oam_tlv_type {
+	OAM_TLV_END = 0,
+	OAM_TLV_DATA = 3,
+	OAM_TLV_REPLY_INGRESS = 5,
+	OAM_TLV_REPLY_EGRESS = 6,
+	OAM_TLV_LTM_EGRESS = 7,
+	OAM_TLV_LTR_EGRESS = 8,
 };
 
-#define ETHERTYPE_CFM 0x8902
+#define ETHERTYPE_OAM 0x8902
 
 /*
- *  Common CFM Header
+ *  Common OAM Header
  *                       octet
  * +------------------+
  * | MD Level         |  1 (high-order 3 bits)
@@ -80,7 +80,7 @@ enum cfm_tlv_type {
  * +------------------+
  */
 
-struct cfm_common_header {
+struct oam_common_header {
 	union {
 		uint8_t md_level;
 		uint8_t version;
@@ -98,22 +98,22 @@ struct cfm_common_header {
  * There is an optional TLV that could be filled between transaction ID and end tlv,
  * that we currently don't include.
  */
-struct cfm_lb_pdu {
-	struct cfm_common_header cfm_header;
+struct oam_lb_pdu {
+	struct oam_common_header oam_header;
 	uint32_t transaction_id;
 	uint8_t end_tlv;
 } __attribute__((__packed__));
 
-/* Wrapper to update CFM LB frame */
-static inline void cfm_update_lb_frame(struct cfm_lb_pdu *frame, struct cfm_lb_session *current_session,
+/* Wrapper to update OAM LB frame */
+static inline void oam_update_lb_frame(struct oam_lb_pdu *frame, struct oam_lb_session *current_session,
 									   libnet_ptag_t *eth_tag, libnet_t *l) {
 
 	*eth_tag = libnet_build_ethernet(
 		current_session->dst_mac,			/* Destination MAC */
 		current_session->src_mac,			/* MAC of local interface */
-		ETHERTYPE_CFM,						/* Ethernet type */
+		ETHERTYPE_OAM,						/* Ethernet type */
 		(uint8_t *)frame,					/* Payload (LBM frame filled above) */
-		sizeof(struct cfm_lb_pdu),			/* Payload size */
+		sizeof(struct oam_lb_pdu),			/* Payload size */
 		l,						   			/* libnet handle */
 		*eth_tag);
 
@@ -124,8 +124,8 @@ static inline void cfm_update_lb_frame(struct cfm_lb_pdu *frame, struct cfm_lb_s
 }
 
 /* Prototypes */
-void cfm_build_common_header(uint8_t md_level, uint8_t version, enum cfm_opcode opcode, uint8_t flags,
-        uint8_t tlv_offset, struct cfm_common_header *header);
-void cfm_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct cfm_lb_pdu *cfm_frame);
+void oam_build_common_header(uint8_t md_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
+        uint8_t tlv_offset, struct oam_common_header *header);
+void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame);
 
-#endif //_CFM_FRAME_H
+#endif //_OAM_FRAME_H

@@ -1,7 +1,7 @@
-STRICT_COMPILE = 0
+STRICT_COMPILE = 1
 
 CFLAGS = -Wall
-LDFLAGS = -lnetcfm -lpthread -lrt -lcap -lnet
+LDFLAGS = -lpthread -lrt -lcap -lnet
 OUTDIR = build
 
 # Use VERBOSE=1 to echo all Makefile commands when running
@@ -25,11 +25,11 @@ CFLAGS += -Wbad-function-cast -Wformat-nonliteral -Wsuggest-attribute=format -Wi
 CFLAGS += -std=gnu99
 endif
 
-TEST_BIN = cfm_test
+TEST_BIN = oam_test
 
-VERSION = $(shell grep LIBNETCFM_VERSION libnetcfm.h | cut -d " " -f 3)
+VERSION = $(shell grep LIBNETOAM_VERSION libnetoam.h | cut -d " " -f 3)
 
-cfm_test_FILES = libnetcfm_test.c
+oam_test_FILES = libnetoam_test.c
 
 # Use SDK environment if available
 CC = $(shell echo $$CC)
@@ -44,22 +44,22 @@ endif
 libs:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
 	$(Q)mkdir $(OUTDIR)
-	$(Q)$(CC) -c $(CFLAGS) -fpic libnetcfm.c cfm_session.c cfm_frame.c
-	$(Q)$(CC) -shared -Wl,-soname,libnetcfm.so.$(VERSION) -o $(OUTDIR)/libnetcfm.so.$(VERSION) libnetcfm.o cfm_session.o cfm_frame.o
+	$(Q)$(CC) -c $(CFLAGS) -fpic libnetoam.c oam_session.c oam_frame.c
+	$(Q)$(CC) -shared -Wl,-soname,libnetoam.so.$(VERSION) -o $(OUTDIR)/libnetoam.so.$(VERSION) libnetoam.o oam_session.o oam_frame.o $(LDFLAGS)
 	$(Q)rm *.o
 
 install:
-	$(Q)mkdir -p $(PREFIX)/include/libnetcfm
-	$(Q)cp -d $(OUTDIR)/libnetcfm.so* $(PREFIX)/lib
-	$(Q)cp *.h $(PREFIX)/include/libnetcfm
-	$(Q)ln -sf $(PREFIX)/lib/libnetcfm.so.$(VERSION) $(PREFIX)/lib/libnetcfm.so
+	$(Q)mkdir -p $(PREFIX)/include/libnetoam
+	$(Q)cp -d $(OUTDIR)/libnetoam.so* $(PREFIX)/lib
+	$(Q)cp *.h $(PREFIX)/include/libnetoam
+	$(Q)ln -sf $(PREFIX)/lib/libnetoam.so.$(VERSION) $(PREFIX)/lib/libnetoam.so
 
 uninstall:
-	$(Q)rm -rf $(PREFIX)/include/libnetcfm 2> /dev/null ||:
-	$(Q)rm -rf $(PREFIX)/lib/libnetcfm.so* 2> /dev/null ||:
+	$(Q)rm -rf $(PREFIX)/include/libnetoam 2> /dev/null ||:
+	$(Q)rm -rf $(PREFIX)/lib/libnetoam.so* 2> /dev/null ||:
 
 test:
-	$(Q)$(CC) $(CFLAGS) $(cfm_test_FILES) -o $(TEST_BIN) $(LDFLAGS)
+	$(Q)$(CC) $(CFLAGS) $(oam_test_FILES) -o $(TEST_BIN) -lnetoam
 
 clean:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:

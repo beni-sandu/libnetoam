@@ -24,38 +24,31 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _LIBNETCFM_H
-#define _LIBNETCFM_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdint.h>
+#include <stdio.h>
+#include <arpa/inet.h>
 
-#include "cfm_session.h"
+#include "oam_frame.h"
 
-/* Library version */
-#define LIBNETCFM_VERSION "0.1"
-
-/* Flag to enable debug messages */
-#ifdef DEBUG_ENABLE
-#define pr_debug(...) printf(__VA_ARGS__)
-#else
-#define pr_debug(...)
-#endif
-
-/* Library interfaces */
-const char *netcfm_lib_version(void);
-cfm_session_id cfm_session_start(struct cfm_session_params *params, enum cfm_session_type session_type);
-void cfm_session_stop(cfm_session_id session_id);
-int get_eth_mac(char *if_name, uint8_t *mac_addr);
-int hwaddr_str2bin(char *mac, uint8_t *addr);
-int get_eth_index(char *if_name, int *if_index);
-
-#ifdef __cplusplus
+void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame) {
+    
+    /* At this point, the common header should be already filled in, so we only add the rest of the LB frame */
+    oam_frame->transaction_id = htonl(transaction_id);
+    oam_frame->end_tlv = end_tlv;
 }
-#endif
 
-#endif //_LIBNETCFM_H
+void oam_build_common_header(uint8_t md_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
+        uint8_t tlv_offset, struct oam_common_header *header) {
 
+    /* MD level must be in range 0-7 */
+    if (md_level > 7) {
+		fprintf(stderr, "oam_build_common_header: out of range MD level, setting to 0.\n");
+		md_level = 0;
+	}
+
+    header->byte1.version = version;
+    header->byte1.md_level = (md_level << 5) & 0xe0;
+    header->opcode = opcode;
+    header->flags = flags;
+    header->tlv_offset = tlv_offset;
+}
