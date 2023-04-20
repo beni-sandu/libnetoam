@@ -51,7 +51,6 @@ oam_session_id oam_session_start(struct oam_session_params *params, enum oam_ses
 void oam_session_stop(oam_session_id session_id);
 int get_eth_mac(char *if_name, uint8_t *mac_addr);
 int hwaddr_str2bin(char *mac, uint8_t *addr);
-int get_eth_index(char *if_name, int *if_index);
 
 #ifdef __cplusplus
 }

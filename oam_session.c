@@ -210,8 +210,9 @@ void *oam_session_run_lbm(void *args) {
     }
 
     /* Get interface index */
-    if (get_eth_index(current_params->if_name, &if_index) == -1) {
-        fprintf(stderr, "Can't get interface index.\n");
+    if_index = if_nametoindex(current_params->if_name);
+    if (if_index == 0) {
+        perror("if_nametoindex");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -266,7 +267,7 @@ void *oam_session_run_lbm(void *args) {
                     eh->ether_dhost[3] == src_hwaddr[3] &&
                     eh->ether_dhost[4] == src_hwaddr[4] &&
                     eh->ether_dhost[5] == src_hwaddr[5])) {
-                pr_debug("Destination MAC of received oam frame is for a different interface.\n");
+                pr_debug("Destination MAC of received OAM frame is for a different interface.\n");
                 continue;
             }
 
@@ -340,8 +341,9 @@ void *oam_session_run_lbr(void *args) {
     }
 
     /* Get interface index */
-    if (get_eth_index(current_params->if_name, &if_index) == -1) {
-        fprintf(stderr, "Can't get interface index.\n");
+    if_index = if_nametoindex(current_params->if_name);
+    if (if_index == 0) {
+        perror("if_nametoindex");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
