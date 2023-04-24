@@ -72,6 +72,7 @@ struct oam_session_params {
     bool is_oneshot;                                            /* Flag for oneshot operation */
     void (*callback)(struct cb_status *status);                 /* Callback function */
     char net_ns[NET_NS_SIZE];                                   /* Network namespace name */
+    uint8_t md_level;                                           /* Maintenance domain level */
 };
 
 struct oam_lb_session {

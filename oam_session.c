@@ -217,7 +217,7 @@ void *oam_session_run_lbm(void *args)
     current_session.transaction_id = random();
 
     /* Build oam common header for LMB frames */
-    oam_build_common_header(0, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
+    oam_build_common_header(current_params->md_level, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
 
     /* Build rest of the initial LBM frame */
     oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
