@@ -61,6 +61,8 @@ __thread bool is_lbm_session_recovered;
 __thread libnet_ptag_t eth_ptag = 0;
 __thread cap_t caps;
 __thread cap_flag_value_t cap_val;
+__thread int ns_fd;
+__thread char ns_buf[MAX_PATH] = "/run/netns/";
 
 ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms)
 {
@@ -150,6 +152,30 @@ void *oam_session_run_lbm(void *args)
 
     /* We don't need this anymore, so clean it */
     cap_free(caps);
+
+    /* Configure network namespace */
+    if (strlen(current_params->net_ns) != 0) {
+        strcat(ns_buf, current_params->net_ns);
+
+        ns_fd = open(ns_buf, O_RDONLY);
+
+        if (ns_fd == -1) {
+            perror("open ns fd");
+            current_thread->ret = -1;
+            sem_post(&current_thread->sem);
+            pthread_exit(NULL);
+        }
+
+        if (setns(ns_fd, CLONE_NEWNET) == -1) {
+            perror("set ns");
+            close(ns_fd);
+            current_thread->ret = -1;
+            sem_post(&current_thread->sem);
+            pthread_exit(NULL);
+        }
+
+        close(ns_fd);
+    }
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
@@ -409,6 +435,30 @@ void *oam_session_run_lbr(void *args)
 
     /* We don't need this anymore, so clean it */
     cap_free(caps);
+
+    /* Configure network namespace */
+    if (strlen(current_params->net_ns) != 0) {
+        strcat(ns_buf, current_params->net_ns);
+
+        ns_fd = open(ns_buf, O_RDONLY);
+
+        if (ns_fd == -1) {
+            perror("open ns fd");
+            current_thread->ret = -1;
+            sem_post(&current_thread->sem);
+            pthread_exit(NULL);
+        }
+
+        if (setns(ns_fd, CLONE_NEWNET) == -1) {
+            perror("set ns");
+            close(ns_fd);
+            current_thread->ret = -1;
+            sem_post(&current_thread->sem);
+            pthread_exit(NULL);
+        }
+
+        close(ns_fd);
+    }
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */

@@ -71,6 +71,7 @@ struct oam_session_params {
     uint32_t ping_recovery_threshold;                           /* Recovery threshold counter */
     bool is_oneshot;                                            /* Flag for oneshot operation */
     void (*callback)(struct cb_status *status);                 /* Callback function */
+    char net_ns[NET_NS_SIZE];                                   /* Network namespace name */
 };
 
 struct oam_lb_session {
