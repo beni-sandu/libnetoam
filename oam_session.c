@@ -59,6 +59,8 @@ __thread uint32_t lbm_missed_pings;
 __thread uint32_t lbm_replied_pings;
 __thread bool is_lbm_session_recovered;
 __thread libnet_ptag_t eth_ptag = 0;
+__thread cap_t caps;
+__thread cap_flag_value_t cap_val;
 
 ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms)
 {
@@ -87,7 +89,7 @@ ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_
     return EXIT_FAILURE;
 }
 
-/* Entry point of a new oam LBM session */
+/* Entry point of a new OAM LBM session */
 void *oam_session_run_lbm(void *args)
 {
     struct oam_thread *current_thread = (struct oam_thread *)args;
@@ -120,6 +122,34 @@ void *oam_session_run_lbm(void *args)
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
+
+    /* Check for CAP_NET_RAW capability */
+    caps = cap_get_proc();
+    if (caps == NULL) {
+        perror("cap_get_proc");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    if (cap_get_flag(caps, CAP_NET_RAW, CAP_EFFECTIVE, &cap_val) == -1) {
+        perror("cap_get_flag");
+        cap_free(caps);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    if (cap_val != CAP_SET) {
+        cap_free(caps);
+        fprintf(stderr, "Execution requires CAP_NET_RAW capability.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* We don't need this anymore, so clean it */
+    cap_free(caps);
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
@@ -298,7 +328,7 @@ void *oam_session_run_lbm(void *args)
                 continue;
             }
 
-            /* If frame is not oam LBR, discard it */
+            /* If frame is not OAM LBR, discard it */
             lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
             if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
                 continue;
@@ -351,6 +381,34 @@ void *oam_session_run_lbr(void *args)
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
+
+    /* Check for CAP_NET_RAW capability */
+    caps = cap_get_proc();
+    if (caps == NULL) {
+        perror("cap_get_proc");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    if (cap_get_flag(caps, CAP_NET_RAW, CAP_EFFECTIVE, &cap_val) == -1) {
+        perror("cap_get_flag");
+        cap_free(caps);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    if (cap_val != CAP_SET) {
+        cap_free(caps);
+        fprintf(stderr, "Execution requires CAP_NET_RAW capability.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* We don't need this anymore, so clean it */
+    cap_free(caps);
 
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
@@ -449,7 +507,7 @@ void *oam_session_run_lbr(void *args)
         if (lbr_frame_p->oam_header.opcode != OAM_OP_LBM)
             continue;
 
-        /* Except for the LBR Opcode, all oam specific PDU data is copied from the received LBM frame */
+        /* Except for the LBR Opcode, all OAM specific PDU data is copied from the received LBM frame */
         memcpy(&lb_frame, lbr_frame_p, sizeof(struct oam_lb_pdu));
         lb_frame.oam_header.opcode = OAM_OP_LBR;
 
@@ -483,7 +541,7 @@ void *oam_session_run_lbr(void *args)
 }
 
 /* 
- * Create a new oam session, returns a session id
+ * Create a new OAM session, returns a session id
  * on successful creation, -1 otherwise
  */
 oam_session_id oam_session_start(struct oam_session_params *params, enum oam_session_type session_type)
@@ -521,7 +579,7 @@ oam_session_id oam_session_start(struct oam_session_params *params, enum oam_ses
     return session_id;
 }
 
-/* Stop a oam session */
+/* Stop a OAM session */
 void oam_session_stop(oam_session_id session_id)
 {
     if (session_id > 0) {
