@@ -223,14 +223,39 @@ void *oam_session_run_lbm(void *args)
     oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
 
     /* Build Ethernet header */
-    eth_ptag = libnet_build_ethernet(
-        (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
-        (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
-        ETHERTYPE_OAM,                                          /* Ethernet type */
-        (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
-        sizeof(lb_frame),                                       /* Payload size */
-        l,                                                      /* libnet handle */
-        eth_ptag);                                              /* libnet tag */
+
+    /* If we a have priority code point or VLAN ID, we need to add a 802.1q header, even if VLAN ID is 0. */
+    if (current_params->pcp > 0 || current_params->vlan_id > 0) {
+        if (current_params->pcp > 7) {
+            pr_debug("[%s] allowed PCP range is 0 - 7, setting to 0.\n", current_params->if_name);
+            current_session.pcp = 0;
+        } else {
+            current_session.pcp = current_params->pcp;
+        }
+        current_session.vlan_id = current_params->vlan_id;
+
+        eth_ptag = libnet_build_802_1q(
+            (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
+            (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
+            ETHERTYPE_VLAN,                                         /* Tag protocol identifier */
+            current_session.pcp,                                    /* Priority code point */
+            0x1,                                                    /* Drop eligible indicator(formerly CFI) */
+            current_session.vlan_id,                                /* VLAN identifier */
+            ETHERTYPE_OAM,                                          /* Protocol type */
+            (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
+            sizeof(lb_frame),                                       /* Payload size */
+            l,                                                      /* libnet handle */
+            eth_ptag);                                              /* libnet tag */
+    } else {
+        eth_ptag = libnet_build_ethernet(
+            (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
+            (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
+            ETHERTYPE_OAM,                                          /* Ethernet type */
+            (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
+            sizeof(lb_frame),                                       /* Payload size */
+            l,                                                      /* libnet handle */
+            eth_ptag);                                              /* libnet tag */
+    }
 
     /* Initial TX timer configuration */
     tx_sev.sigev_notify = SIGEV_THREAD;                         /* Notify via thread */

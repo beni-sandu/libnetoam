@@ -34,7 +34,7 @@
 
 #include "oam_session.h"
 
-/* 
+/*
  * OAM OpCodes
  *
  * We only implement ETH-LB for the moment, but let's create an enum
@@ -48,7 +48,7 @@ enum oam_opcode {
 	OAM_OP_LTM = 5,
 };
 
-/* 
+/*
  * Generic TLV format
  * In an End TLV, Type = 0, and both Length and Value fields are not used.
  * Below TLV types are from IEEE 802.1.
@@ -92,9 +92,9 @@ struct oam_common_header {
 
 /* The rest of the PDU is protocol specific, we only implement ETH-LB for the moment (MAC ping) */
 
-/* 
+/*
  * ETH-LB PDU is similar for both LBM/LBR frames.
- * 
+ *
  * There is an optional TLV that could be filled between transaction ID and end tlv,
  * that we currently don't include.
  */
@@ -106,16 +106,31 @@ struct oam_lb_pdu {
 
 /* Wrapper to update OAM LB frame */
 static inline void oam_update_lb_frame(struct oam_lb_pdu *frame, struct oam_lb_session *current_session,
-									   libnet_ptag_t *eth_tag, libnet_t *l)
+						libnet_ptag_t *eth_tag, libnet_t *l)
 {
-	*eth_tag = libnet_build_ethernet(
-		current_session->dst_mac,			/* Destination MAC */
-		current_session->src_mac,			/* MAC of local interface */
-		ETHERTYPE_OAM,						/* Ethernet type */
-		(uint8_t *)frame,					/* Payload (LBM frame filled above) */
-		sizeof(struct oam_lb_pdu),			/* Payload size */
-		l,						   			/* libnet handle */
-		*eth_tag);
+	if (current_session->pcp > 0 || current_session->vlan_id) {
+		*eth_tag = libnet_build_802_1q(
+			current_session->dst_mac,           /* Destination MAC */
+			current_session->src_mac,           /* MAC of local interface */
+			ETHERTYPE_VLAN,                     /* Tag protocol identifier */
+			current_session->pcp,               /* Priority code point */
+			0x1,                                /* Drop eligible indicator(formerly CFI) */
+			current_session->vlan_id,           /* VLAN identifier */
+			ETHERTYPE_OAM,                      /* Protocol type */
+			(uint8_t *)frame,                   /* Payload (LBM frame filled above) */
+			sizeof(struct oam_lb_pdu),          /* Payload size */
+			l,                                  /* libnet handle */
+			*eth_tag);                          /* libnet tag */
+	} else {
+		*eth_tag = libnet_build_ethernet(
+			current_session->dst_mac,           /* Destination MAC */
+			current_session->src_mac,           /* MAC of local interface */
+			ETHERTYPE_OAM,                      /* Ethernet type */
+			(uint8_t *)frame,                   /* Payload (LBM frame filled above) */
+			sizeof(struct oam_lb_pdu),          /* Payload size */
+			l,                                  /* libnet handle */
+			*eth_tag);                          /* libnet tag */
+	}
 
 	if (*eth_tag == -1) {
 		fprintf(stderr, "Can't build LBM frame: %s\n", libnet_geterror(l));
@@ -125,7 +140,7 @@ static inline void oam_update_lb_frame(struct oam_lb_pdu *frame, struct oam_lb_s
 
 /* Prototypes */
 void oam_build_common_header(uint8_t md_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
-        uint8_t tlv_offset, struct oam_common_header *header);
+		uint8_t tlv_offset, struct oam_common_header *header);
 void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame);
 
 #endif //_OAM_FRAME_H

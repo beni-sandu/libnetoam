@@ -73,6 +73,8 @@ struct oam_session_params {
     void (*callback)(struct cb_status *status);                 /* Callback function */
     char net_ns[NET_NS_SIZE];                                   /* Network namespace name */
     uint8_t md_level;                                           /* Maintenance domain level */
+    uint16_t vlan_id;                                           /* VLAN identifier */
+    uint8_t pcp;                                                /* Frame priority level (from 802.1q header) */
 };
 
 struct oam_lb_session {
@@ -87,6 +89,9 @@ struct oam_lb_session {
     libnet_ptag_t *eth_ptag;                                    /* Pointer to libnet ETH tag */
     libnet_t *l;                                                /* libnet context */
     struct oam_lbm_timer *lbm_tx_timer;                         /* Pointer to LBM tx timer */
+    uint16_t vlan_id;                                           /* VLAN identifier */
+    uint8_t pcp;                                                /* Frame priority level */
+
 };
 
 /* Data passed to per session timer */

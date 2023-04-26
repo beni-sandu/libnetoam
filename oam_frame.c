@@ -29,6 +29,7 @@
 #include <arpa/inet.h>
 
 #include "oam_frame.h"
+#include "libnetoam.h"
 
 void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame)
 {    
@@ -42,7 +43,7 @@ void oam_build_common_header(uint8_t md_level, uint8_t version, enum oam_opcode 
 {
     /* MD level must be in range 0-7 */
     if (md_level > 7) {
-		fprintf(stderr, "oam_build_common_header: out of range MD level, setting to 0.\n");
+		pr_debug("oam_build_common_header: out of range MD level, setting to 0.\n");
 		md_level = 0;
 	}
 
