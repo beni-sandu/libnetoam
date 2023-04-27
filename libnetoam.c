@@ -33,6 +33,8 @@
 #include <arpa/inet.h>
 #include <net/ethernet.h>
 #include <ctype.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
 
 #include "libnetoam.h"
 
@@ -133,6 +135,99 @@ int get_eth_mac(char *if_name, uint8_t *mac_addr)
     /* The provided interface is not present on the machine */
     freeifaddrs(addrs);
     return EXIT_FAILURE;
+}
+
+/* All this code just to find out if an interface is a VLAN, WHY GOD */
+bool is_eth_vlan(char *if_name)
+{
+
+#define RECV_BUFSIZE (32678)
+
+    /* Request message */
+    struct req_msq {
+        struct nlmsghdr header;
+        struct ifinfomsg msg;
+    } req;
+
+    /* Fill in request that we send to the kernel */
+    size_t seq_num = 0;
+    struct nlmsghdr *nh;
+    struct sockaddr_nl sa = {0};
+    struct iovec iov[1] = { {&req, sizeof(req)} };
+    struct msghdr msg = {
+        .msg_name = &sa,
+        .msg_namelen = sizeof(sa),
+        .msg_iov = iov,
+        .msg_iovlen = 1,
+    };
+    req.header.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+    req.header.nlmsg_flags = NLM_F_REQUEST | NLM_F_ROOT;
+    req.header.nlmsg_type = RTM_GETLINK;
+    req.header.nlmsg_seq = ++seq_num;
+    sa.nl_family = AF_NETLINK;
+    
+    /* Create a netlink route socket */
+    int sfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sfd < 0) {
+        perror("socket");
+        return false;
+    }
+
+    /* Send the request to kernel */
+    if (sendmsg(sfd, &msg, 0) < 0) {
+        perror("sendmsg");
+        return false;
+    }
+
+    /* Swap header payload */
+    uint8_t recv_buf[RECV_BUFSIZE];
+    iov->iov_base = &recv_buf;
+    iov->iov_len = RECV_BUFSIZE;
+
+    /* Read kernel reply */
+    while (1) {
+        int len = recvmsg(sfd, &msg, 0);
+        if (len < 0) {
+            perror("recvmsg");
+            return false;
+        }
+
+        /* Look through the message */
+        for (nh = (struct nlmsghdr *)recv_buf; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
+            int rta_len;
+            struct ifinfomsg *msg;
+            struct rtattr *rta;
+
+            /* End of multipart message, interface not found */
+            if (nh->nlmsg_type == NLMSG_DONE)
+                return false;
+
+            /* Error reading message */
+            if (nh->nlmsg_type ==  NLMSG_ERROR)
+                return false;
+
+            msg = (struct ifinfomsg *)NLMSG_DATA(nh);
+            if (msg->ifi_type != ARPHRD_ETHER)
+                continue;
+
+            /* We found our interface */
+            if ((int)if_nametoindex(if_name) == msg->ifi_index) {
+
+                /* Read message attributes */
+                rta = IFLA_RTA(msg);
+                rta_len = nh->nlmsg_len - NLMSG_LENGTH(sizeof *msg);
+
+                for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
+
+                    /* Is it a VLAN interface? */
+                    if (rta->rta_type == IFLA_VLAN_PROTOCOL)
+                        return true;
+                }
+
+                return false;
+            }
+        }
+    }
 }
 
 /* Return library version */
