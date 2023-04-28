@@ -38,6 +38,8 @@
 
 #include "libnetoam.h"
 
+#define VLAN_VALID(hdr, hv)   ((hv)->tp_vlan_tci != 0 || ((hdr)->tp_status & TP_STATUS_VLAN_VALID))
+
 /* Prototypes */
 int hex2bin(char ch);
 
@@ -228,6 +230,25 @@ bool is_eth_vlan(char *if_name)
             }
         }
     }
+}
+
+bool is_frame_tagged(struct msghdr *recv_msg)
+{
+    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(recv_msg); cmsg != NULL; cmsg = CMSG_NXTHDR(recv_msg, cmsg)) {
+        if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct tpacket_auxdata)) ||
+            cmsg->cmsg_level != SOL_PACKET ||
+            cmsg->cmsg_type != PACKET_AUXDATA)
+				continue;
+
+            struct tpacket_auxdata *auxp = (struct tpacket_auxdata *)CMSG_DATA(cmsg);
+
+            if (VLAN_VALID(auxp, auxp)) {
+                return true;
+                break;
+            }
+
+    }
+    return false;
 }
 
 /* Return library version */

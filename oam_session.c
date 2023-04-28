@@ -41,7 +41,7 @@
 void lbm_timeout_handler(union sigval sv);
 int oam_update_timer(int interval, struct itimerspec *ts, struct oam_lbm_timer *timer_data);
 void lb_session_cleanup(void *args);
-ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms);
+ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, int timeout_ms);
 void *oam_session_run_lbr(void *args);
 void *oam_session_run_lbm(void *args);
 
@@ -64,7 +64,7 @@ __thread cap_flag_value_t cap_val;
 __thread int ns_fd;
 __thread char ns_buf[MAX_PATH] = "/run/netns/";
 
-ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_ms)
+ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, int timeout_ms)
 {
     struct pollfd fds[1];
     struct timespec ts;
@@ -86,8 +86,8 @@ ssize_t recvfrom_ppoll(int sockfd, uint8_t *recv_buf, int buf_size, int timeout_
     }
     else
         if (fds[0].revents & POLLIN)
-            return recvfrom(sockfd, recv_buf, buf_size, 0, NULL, NULL);
-    
+            return recvmsg(sockfd, recv_hdr, 0);
+
     return EXIT_FAILURE;
 }
 
@@ -104,6 +104,24 @@ void *oam_session_run_lbm(void *args)
     int if_index = 0;
     struct ether_header *eh;
     struct oam_lb_pdu *lbm_frame_p;
+
+    /* Setup buffer and header structs for received packets */
+    uint8_t recv_buf[8192];
+	struct iovec recv_iov = {
+          .iov_base = recv_buf,
+          .iov_len = 8192,
+    };
+
+	union {
+          struct cmsghdr cmsg;
+          char buf[CMSG_SPACE(sizeof(struct tpacket_auxdata))];
+	} cmsg_buf;
+	struct msghdr recv_hdr = {
+          .msg_iov = &recv_iov,
+          .msg_iovlen = 1,
+          .msg_control = &cmsg_buf,
+          .msg_controllen = sizeof(cmsg_buf)
+     };
 
     /* Initialize some session and timer data */
     current_session.lbm_tx_timer = &tx_timer;
@@ -344,7 +362,7 @@ void *oam_session_run_lbm(void *args)
     while (true) {
         
         /* Check our socket for data */
-        numbytes = recvfrom_ppoll(sockfd, recv_buf, ETH_DATA_LEN, current_params->interval_ms);
+        numbytes = recvmsg_ppoll(sockfd, &recv_hdr, current_params->interval_ms);
 
         /* We didn't get any response in the expected interval */
         if (numbytes == -2) {
@@ -372,16 +390,18 @@ void *oam_session_run_lbm(void *args)
         }
 
         if (numbytes > 0) {
+
+            /* If it is not an OAM frame, drop it */
             eh = (struct ether_header *)recv_buf;
+            if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
+                continue;
+
+            /* If frame is not addressed to this interface, drop it */
+            if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+                continue;
             
             /* Get aprox timestamp of received frame */
             clock_gettime(CLOCK_REALTIME, &current_session.time_received);
-
-            /* If interface is in promisc mode, check for wrong destination ETH address */
-            if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0) {
-                pr_debug("Destination MAC of received OAM frame is for a different interface.\n");
-                continue;
-            }
 
             /* If frame is not OAM LBR, discard it */
             lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
@@ -433,6 +453,24 @@ void *oam_session_run_lbr(void *args)
     struct oam_lb_pdu *lbr_frame_p;
     int c;
     struct oam_lb_session current_session;
+
+    /* Setup buffer and header structs for received packets */
+    uint8_t recv_buf[8192];
+	struct iovec recv_iov = {
+          .iov_base = recv_buf,
+          .iov_len = 8192,
+    };
+
+	union {
+          struct cmsghdr cmsg;
+          char buf[CMSG_SPACE(sizeof(struct tpacket_auxdata))];
+	} cmsg_buf;
+	struct msghdr recv_hdr = {
+          .msg_iov = &recv_iov,
+          .msg_iovlen = 1,
+          .msg_control = &cmsg_buf,
+          .msg_controllen = sizeof(cmsg_buf)
+     };
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
@@ -513,7 +551,7 @@ void *oam_session_run_lbr(void *args)
     current_session.l = l;
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
         perror("socket");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -526,6 +564,14 @@ void *oam_session_run_lbr(void *args)
     /* Make socket address reusable (TODO: check if this is needed for raw sockets, I suspect not) */
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag_enable, sizeof(flag_enable)) < 0) {
         fprintf(stderr, "Can't configure socket address to be reused.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Enable packet auxdata */
+    if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
+        fprintf(stderr, "Can't enable packet auxdata.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -544,7 +590,7 @@ void *oam_session_run_lbr(void *args)
     memset(&sll, 0, sizeof(struct sockaddr_ll));
     sll.sll_family = AF_PACKET;
     sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETHERTYPE_OAM);
+    sll.sll_protocol = htons(ETH_P_ALL);
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
@@ -553,11 +599,6 @@ void *oam_session_run_lbr(void *args)
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
-
-    int p_sfd = 0;
-
-    /* Put interface in promisc mode, for testing only */
-    set_promisc(current_params->if_name, true, &p_sfd);
 
     /* Session configuration is successful, return a valid session id */
     current_session.is_session_configured = true;
@@ -569,46 +610,55 @@ void *oam_session_run_lbr(void *args)
     while (true) {
 
         /* Wait for data on the socket */
-        numbytes = recvfrom(sockfd, recv_buf, ETH_DATA_LEN, 0, NULL, NULL);
+        numbytes = recvmsg(sockfd, &recv_hdr, 0);
 
         /* We got something, look around */
-        pr_debug("Received frame on LBR session, %ld bytes.\n", numbytes);
-        eh = (struct ether_header *)recv_buf;
+        if (numbytes > 0) {
 
-        /* If interface is in promisc mode, check for wrong destination ETH address */
-        if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0) {
-            pr_debug("Destination MAC of received OAM frame is for a different interface.\n");
-            continue;
-        }
+            pr_debug("Received frame on LBR session, %ld bytes.\n", numbytes);
+            
+            /* If frame has a tag, it is not for us */
+            if (is_frame_tagged(&recv_hdr) == true)
+                continue;
+            
+            /* If it is not an OAM frame, drop it */
+            eh = (struct ether_header *)recv_buf;
+            if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
+                continue;
 
-        /* If frame is not OAM LBM, discard it */
-        lbr_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
-        if (lbr_frame_p->oam_header.opcode != OAM_OP_LBM)
-            continue;
+            /* If frame is not addressed to this interface, drop it */
+            if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+                continue;
 
-        /* Except for the LBR Opcode, all OAM specific PDU data is copied from the received LBM frame */
-        memcpy(&lb_frame, lbr_frame_p, sizeof(struct oam_lb_pdu));
-        lb_frame.oam_header.opcode = OAM_OP_LBR;
+            /* If frame is not OAM LBM, discard it */
+            lbr_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+            if (lbr_frame_p->oam_header.opcode != OAM_OP_LBM)
+                continue;
 
-        /* Copy destination MAC address */
-        memcpy(dst_hwaddr, eh->ether_shost, ETH_ALEN);
+            /* Except for the LBR Opcode, all OAM specific PDU data is copied from the received LBM frame */
+            memcpy(&lb_frame, lbr_frame_p, sizeof(struct oam_lb_pdu));
+            lb_frame.oam_header.opcode = OAM_OP_LBR;
 
-        /* Build ETH header for the LBR frame that we send as a reply */
-        eth_ptag = libnet_build_ethernet(
-            (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
-            (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
-            ETHERTYPE_OAM,                                          /* Ethernet type */
-            (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
-            sizeof(lb_frame),                                       /* Payload size */
-            l,                                                      /* libnet handle */
-            eth_ptag);                                              /* libnet tag */
+            /* Copy destination MAC address */
+            memcpy(dst_hwaddr, eh->ether_shost, ETH_ALEN);
+
+            /* Build ETH header for the LBR frame that we send as a reply */
+            eth_ptag = libnet_build_ethernet(
+                (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
+                (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
+                ETHERTYPE_OAM,                                          /* Ethernet type */
+                (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
+                sizeof(lb_frame),                                       /* Payload size */
+                l,                                                      /* libnet handle */
+                eth_ptag);                                              /* libnet tag */
         
-        /* Send OAM frame on wire */
-        c = libnet_write(l);
+            /* Send OAM frame on wire */
+            c = libnet_write(l);
 
-        if (c == -1) {
-            fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
-            continue;
+            if (c == -1) {
+                fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
+                continue;
+            }
         }
 
     } // while (true)

@@ -53,6 +53,7 @@ int get_eth_mac(char *if_name, uint8_t *mac_addr);
 int hwaddr_str2bin(char *mac, uint8_t *addr);
 void set_promisc(const char *ifname, bool enable, int *sfd);
 bool is_eth_vlan(char *if_name);
+bool is_frame_tagged(struct msghdr *recv_msg);
 
 #ifdef __cplusplus
 }
