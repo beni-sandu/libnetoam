@@ -92,6 +92,7 @@ struct oam_lb_session {
     struct oam_lbm_timer *lbm_tx_timer;                         /* Pointer to LBM tx timer */
     uint16_t vlan_id;                                           /* VLAN identifier */
     uint8_t pcp;                                                /* Frame priority level */
+    volatile bool send_next_frame;
 
 };
 

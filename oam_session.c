@@ -74,7 +74,7 @@ ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, int timeout_ms)
     fds[0].events = POLLIN;
 
     ts.tv_sec = timeout_ms / 1000;
-    ts.tv_nsec = timeout_ms % 1000 * 1000;
+    ts.tv_nsec = timeout_ms % 1000 * 1000000;
 
     ret = ppoll(fds, 1, &ts, NULL);
 
@@ -128,6 +128,7 @@ void *oam_session_run_lbm(void *args)
     current_session.frame = &lb_frame;
     current_session.eth_ptag = &eth_ptag;
     current_session.is_session_configured = false;
+    current_session.send_next_frame = true;
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
@@ -237,9 +238,6 @@ void *oam_session_run_lbm(void *args)
     /* Build oam common header for LMB frames */
     oam_build_common_header(current_params->md_level, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
 
-    /* Build rest of the initial LBM frame */
-    oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
-
     /* Build Ethernet header */
 
     /* If session is started on a VLAN, we ignore VLAN parameters, otherwise it will get double tagged */
@@ -287,9 +285,9 @@ void *oam_session_run_lbm(void *args)
 
     /* Configure TX interval */
     tx_ts.it_interval.tv_sec = current_params->interval_ms / 1000;
-    tx_ts.it_interval.tv_nsec = current_params->interval_ms % 1000 * 1000;
+    tx_ts.it_interval.tv_nsec = current_params->interval_ms % 1000 * 1000000;
     tx_ts.it_value.tv_sec = current_params->interval_ms / 1000;
-    tx_ts.it_value.tv_nsec = current_params->interval_ms % 1000 * 1000;
+    tx_ts.it_value.tv_nsec = current_params->interval_ms % 1000 * 1000000;
 
     /* Create TX timer */
     if (timer_create(CLOCK_REALTIME, &tx_sev, &(tx_timer.timer_id)) == -1) {
@@ -351,86 +349,107 @@ void *oam_session_run_lbm(void *args)
     pr_debug("LBM session configured successfully.\n");
     sem_post(&current_thread->sem);
 
-    /* Start sending LBM frames */
-    if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
-        perror("timer settime");
-        current_thread->ret = -1;
-        pthread_exit(NULL);
-    }
-
     /* Processing loop for incoming frames */
     while (true) {
-        
-        /* Check our socket for data */
-        numbytes = recvmsg_ppoll(sockfd, &recv_hdr, current_params->interval_ms);
 
-        /* We didn't get any response in the expected interval */
-        if (numbytes == -2) {
-            lbm_missed_pings++;
-            lbm_replied_pings = 0;
-            is_lbm_session_recovered = false;
-            printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
-        }
+        if (current_session.send_next_frame == true) {
+            
+            /* Update frame and send on wire */
+            oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
+            oam_update_lb_frame(&lb_frame, &current_session, current_session.eth_ptag, l);
+            int c = libnet_write(l);
 
-        /* If we reached the missed pings threshold, use callback */
-        if (current_params->missed_consecutive_ping_threshold > 0) {
-            if (lbm_missed_pings == current_params->missed_consecutive_ping_threshold) {
-                if (current_params->callback != NULL) {
-                    callback_status.cb_ret = OAM_CB_MISSED_PING_THRESH;
-                    current_params->callback(&callback_status);
-                }
-
-                /* Reset counter */
-                lbm_missed_pings = 0;
-
-                /* If it is oneshot operation, close session */
-                if (current_params->is_oneshot == true)
-                    pthread_exit(NULL);
+            if (c == -1) {
+                fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
+                continue;
             }
-        }
 
-        if (numbytes > 0) {
+            current_session.send_next_frame = false;
 
-            /* If it is not an OAM frame, drop it */
-            eh = (struct ether_header *)recv_buf;
-            if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
-                continue;
+            /* Get aprox timestamp of sent frame */
+            clock_gettime(CLOCK_REALTIME, &(current_session.time_sent));
+            pr_debug("Sent LBM with transaction id: %d\n", current_session.transaction_id);
 
-            /* If frame is not addressed to this interface, drop it */
-            if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
-                continue;
+            /* Reset timer */
+            if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
+                perror("timer settime");
+                current_thread->ret = -1;
+                sem_post(&current_thread->sem);
+                pthread_exit(NULL);
+            }
+        
+            /* Check our socket for a reply */
+            numbytes = recvmsg_ppoll(sockfd, &recv_hdr, current_params->interval_ms);
+
+            /* We didn't get any response in the expected interval */
+            if (numbytes == -2) {
+                lbm_missed_pings++;
+                lbm_replied_pings = 0;
+                is_lbm_session_recovered = false;
+                printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
+            }
+
+            /* If we reached the missed pings threshold, use callback */
+            if (current_params->missed_consecutive_ping_threshold > 0) {
+                if (lbm_missed_pings == current_params->missed_consecutive_ping_threshold) {
+                    if (current_params->callback != NULL) {
+                        callback_status.cb_ret = OAM_CB_MISSED_PING_THRESH;
+                        current_params->callback(&callback_status);
+                    }
+
+                    /* Reset counter */
+                    lbm_missed_pings = 0;
+
+                    /* If it is oneshot operation, close session */
+                    if (current_params->is_oneshot == true)
+                        pthread_exit(NULL);
+                }
+            }
+
+            /* We got something, check data */
+            if (numbytes > 0) {
+
+                /* If it is not an OAM frame, drop it */
+                eh = (struct ether_header *)recv_buf;
+                if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
+                    continue;
+
+                /* If frame is not addressed to this interface, drop it */
+                if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+                    continue;
             
-            /* Get aprox timestamp of received frame */
-            clock_gettime(CLOCK_REALTIME, &current_session.time_received);
+                /* Get aprox timestamp of received frame */
+                clock_gettime(CLOCK_REALTIME, &current_session.time_received);
 
-            /* If frame is not OAM LBR, discard it */
-            lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
-            if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
-                continue;
+                /* If frame is not OAM LBR, discard it */
+                lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+                if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
+                    continue;
             
-            /* We are receiving pings, reset missed counter */
-            lbm_missed_pings = 0;
-            lbm_replied_pings++;
+                /* We are receiving pings, reset missed counter */
+                lbm_missed_pings = 0;
+                lbm_replied_pings++;
 
-            /* If we missed pings before, we are on a recovery path */
-            if (current_params->ping_recovery_threshold > 0) {
-                if (is_lbm_session_recovered == false) {
+                /* If we missed pings before, we are on a recovery path */
+                if (current_params->ping_recovery_threshold > 0) {
+                    if (is_lbm_session_recovered == false) {
 
-                    /* We reached recovery threshold, use callback */
-                    if (current_params->ping_recovery_threshold == lbm_replied_pings) {
-                        is_lbm_session_recovered = true;
-                        if (current_params->callback != NULL) {
-                            callback_status.cb_ret = OAM_CB_RECOVER_PING_THRESH;
-                            current_params->callback(&callback_status);
+                        /* We reached recovery threshold, use callback */
+                        if (current_params->ping_recovery_threshold == lbm_replied_pings) {
+                            is_lbm_session_recovered = true;
+                            if (current_params->callback != NULL) {
+                                callback_status.cb_ret = OAM_CB_RECOVER_PING_THRESH;
+                                current_params->callback(&callback_status);
+                            }
                         }
                     }
                 }
-            }
 
-            printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
-                    eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
-                    ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
-                    (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));     
+                printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
+                        eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
+                        ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
+                        (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));     
+            }
         }
     }
 
@@ -721,30 +740,9 @@ void oam_session_stop(oam_session_id session_id)
 void lbm_timeout_handler(union sigval sv)
 {
     struct oam_lb_session *current_session = sv.sival_ptr;
-    int c;
-    struct oam_lb_pdu *lbm_frame = current_session->frame;
-    libnet_ptag_t *eth_tag = current_session->eth_ptag;
-    libnet_t *l = current_session->l;
-
-    /* Update transaction id */
-    oam_build_lb_frame(current_session->transaction_id, 0, lbm_frame);
-
-    /* Update rest of the frame */
-    oam_update_lb_frame(lbm_frame, current_session, eth_tag, l);
-
-    /* Send OAM frame on wire */
-    c = libnet_write(l);
-
-    if (c == -1) {
-        fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
-        pthread_exit(NULL);
-    }
-
-    /* Get aprox timestamp of sent frame */
-    clock_gettime(CLOCK_REALTIME, &current_session->time_sent);
-    pr_debug("Sent LBM with transaction id: %d\n", current_session->transaction_id);
 
     current_session->transaction_id++;
+    current_session->send_next_frame = true;
 }
 
 void lb_session_cleanup(void *args)
