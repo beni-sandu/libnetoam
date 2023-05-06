@@ -45,40 +45,54 @@ Below is a code example of a typical workflow:
 void lbm_callback(struct cb_status *status) {
     
     switch(status->cb_ret) {
-        case OAM_CB_MISSED_PING_THRESH:
-            printf("[%s] Consecutive missed ping threshold reached.\n", status->session_params->if_name);
+        case OAM_LB_CB_MISSED_PING_THRESH:
+            printf("[%s] Consecutive missed ping threshold reached.\n",
+                            status->session_params->if_name);
             break;
         
-        case OAM_CB_RECOVER_PING_THRESH:
+        case OAM_LB_CB_RECOVER_PING_THRESH:
             printf("[%s] Recovery threshold reached.\n", status->session_params->if_name);
             break;
     }
 }
 
 // Fill in needed parameters for a LBM session
-oam_session_id s1 = 0;
+oam_session_id s1_lbm = 0, s1_lbr = 0;
 
-struct oam_session_params s1_params = {
+struct oam_lb_session_params s1_lbm_params = {
         .if_name = "eth0",
         .dst_mac = "74:78:27:28:bb:cc",
         .interval_ms = 1000,
         .missed_consecutive_ping_threshold = 5,
         .callback = &lbm_callback,
-    };
+};
 
-// Start the session:
-s1 = oam_session_start(&s1_params, OAM_SESSION_LBM);
+struct oam_lb_session_params s1_lbr_params = {
+        .if_name = "eth0",
+};
+
+// Start a LBM session:
+s1_lbm = oam_session_start(&s1_lbm_params, OAM_SESSION_LBM);
+
+// ..or LBR session:
+s1_lbr = oam_session_start(&s1_lbr_params, OAM_SESSION_LBR);
 
 // Error checking
-if (s1 > 0)
+if (s1_lbm > 0)
     printf("LBM session started successfully: [%s]\n", s1_params.if_name);
 else
     printf("Error starting LBM session: [%s]\n", s1_params.if_name);
 
+if (s1_lbr > 0)
+    printf("LBR session started successfully: [%s]\n", s1_params.if_name);
+else
+    printf("Error starting LBR session: [%s]\n", s1_params.if_name);
+
 // Do your work here...
 
 // Stop the session
-oam_session_stop(s1);
+oam_session_stop(s1_lbm);
+oam_session_stop(s1_lbr);
 ```
 
 More details about the available interfaces and parameters can be found here:

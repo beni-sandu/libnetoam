@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Beniamin Sandu <beniaminsandu@gmail.com>
+ * Copyright (C) 2023 Beniamin Sandu <beniaminsandu@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,7 +48,7 @@ extern "C" {
 
 /* Library interfaces */
 const char *netoam_lib_version(void);
-oam_session_id oam_session_start(struct oam_lb_session_params *params, enum oam_session_type session_type);
+oam_session_id oam_session_start(void *params, enum oam_session_type session_type);
 void oam_session_stop(oam_session_id session_id);
 int get_eth_mac(char *if_name, uint8_t *mac_addr);
 int hwaddr_str2bin(char *mac, uint8_t *addr);

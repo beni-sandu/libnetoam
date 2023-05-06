@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Beniamin Sandu <beniaminsandu@gmail.com>
+ * Copyright (C) 2023 Beniamin Sandu <beniaminsandu@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,9 +38,9 @@ enum oam_session_type {
     OAM_SESSION_LBR = 1,
 };
 
-struct oam_thread {
+struct oam_session_thread {
     sem_t sem;
-    struct oam_lb_session_params *session_params;
+    void *session_params;
     int ret;
 };
 
@@ -54,8 +54,5 @@ enum oam_cb_ret {
     OAM_LB_CB_MISSED_PING_THRESH       = 1,
     OAM_LB_CB_RECOVER_PING_THRESH      = 2,
 };
-
-oam_session_id oam_session_start(struct oam_lb_session_params *params, enum oam_session_type session_type);
-void oam_session_stop(oam_session_id session_id);
 
 #endif //_OAM_SESSION_H

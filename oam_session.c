@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Beniamin Sandu <beniaminsandu@gmail.com>
+ * Copyright (C) 2023 Beniamin Sandu <beniaminsandu@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,11 +34,11 @@
  * Create a new OAM session, returns a session id
  * on successful creation, -1 otherwise
  */
-oam_session_id oam_session_start(struct oam_lb_session_params *params, enum oam_session_type session_type)
+oam_session_id oam_session_start(void *params, enum oam_session_type session_type)
 {    
     pthread_t session_id;
     int ret;
-    struct oam_thread new_thread;
+    struct oam_session_thread new_thread;
 
     new_thread.session_params = params;
     new_thread.ret = 0;
@@ -57,7 +57,7 @@ oam_session_id oam_session_start(struct oam_lb_session_params *params, enum oam_
     }
 
     if (ret) {
-        fprintf(stderr, "oam_session_start for interface: %s failed, err: %d\n", params->if_name, ret);
+        fprintf(stderr, "oam_session_start, err: %d\n", ret);
         return -1;
     }
 

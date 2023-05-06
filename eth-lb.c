@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Beniamin Sandu <beniaminsandu@gmail.com>
+ * Copyright (C) 2023 Beniamin Sandu <beniaminsandu@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -94,7 +94,7 @@ ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, int timeout_ms)
 /* Entry point of a new OAM LBM session */
 void *oam_session_run_lbm(void *args)
 {
-    struct oam_thread *current_thread = (struct oam_thread *)args;
+    struct oam_session_thread *current_thread = (struct oam_session_thread *)args;
     struct oam_lb_session_params *current_params = current_thread->session_params;
     uint8_t src_hwaddr[ETH_ALEN];
     uint8_t dst_hwaddr[ETH_ALEN];
@@ -462,7 +462,7 @@ void *oam_session_run_lbm(void *args)
 /* Entry point of a new OAM LBR session */
 void *oam_session_run_lbr(void *args)
 {
-    struct oam_thread *current_thread = (struct oam_thread *)args;
+    struct oam_session_thread *current_thread = (struct oam_session_thread *)args;
     struct oam_lb_session_params *current_params = current_thread->session_params;
     uint8_t src_hwaddr[ETH_ALEN];
     uint8_t dst_hwaddr[ETH_ALEN];
