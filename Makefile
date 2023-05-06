@@ -44,8 +44,8 @@ endif
 libs:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
 	$(Q)mkdir $(OUTDIR)
-	$(Q)$(CC) -c $(CFLAGS) -fpic libnetoam.c oam_session.c oam_frame.c
-	$(Q)$(CC) -shared -Wl,-soname,libnetoam.so.$(VERSION) -o $(OUTDIR)/libnetoam.so.$(VERSION) libnetoam.o oam_session.o oam_frame.o $(LDFLAGS)
+	$(Q)$(CC) -c $(CFLAGS) -fpic libnetoam.c oam_session.c oam_frame.c eth-lb.c
+	$(Q)$(CC) -shared -Wl,-soname,libnetoam.so.$(VERSION) -o $(OUTDIR)/libnetoam.so.$(VERSION) libnetoam.o oam_session.o oam_frame.o eth-lb.o $(LDFLAGS)
 	$(Q)rm *.o
 
 install:

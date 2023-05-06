@@ -33,6 +33,7 @@
 #include <pthread.h>
 
 #include "oam_session.h"
+#include "eth-lb.h"
 
 /*
  * OAM OpCodes

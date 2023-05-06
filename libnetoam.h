@@ -34,6 +34,7 @@ extern "C" {
 #include <stdint.h>
 
 #include "oam_session.h"
+#include "eth-lb.h"
 
 /* Library version */
 #define LIBNETOAM_VERSION "0.1"
@@ -47,11 +48,10 @@ extern "C" {
 
 /* Library interfaces */
 const char *netoam_lib_version(void);
-oam_session_id oam_session_start(struct oam_session_params *params, enum oam_session_type session_type);
+oam_session_id oam_session_start(struct oam_lb_session_params *params, enum oam_session_type session_type);
 void oam_session_stop(oam_session_id session_id);
 int get_eth_mac(char *if_name, uint8_t *mac_addr);
 int hwaddr_str2bin(char *mac, uint8_t *addr);
-void set_promisc(const char *ifname, bool enable, int *sfd);
 bool is_eth_vlan(char *if_name);
 bool is_frame_tagged(struct msghdr *recv_msg);
 void pr_log(char *log_file, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));

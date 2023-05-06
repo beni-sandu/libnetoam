@@ -28,8 +28,6 @@
 #define _OAM_SESSION_H
 
 #include <semaphore.h>
-#include <stdbool.h>
-#include <libnet.h>
 
 /* Add a typedef for a OAM session id */
 typedef long int oam_session_id;
@@ -40,67 +38,24 @@ enum oam_session_type {
     OAM_SESSION_LBR = 1,
 };
 
-#define IF_NAME_SIZE 32
-#define NET_NS_SIZE 32
-#define MAX_PATH 512
-#define ETH_STR_LEN 18
-
-
 struct oam_thread {
     sem_t sem;
-    struct oam_session_params *session_params;
+    struct oam_lb_session_params *session_params;
     int ret;
 };
 
 struct cb_status {
     int cb_ret;                                                 /* Callback return value */
-    struct oam_session_params *session_params;                  /* Pointer to current session parameters */
+    struct oam_lb_session_params *session_params;                  /* Pointer to current session parameters */
 };
 
 enum oam_cb_ret {
-    OAM_CB_DEFAULT                  = 0,
-    OAM_CB_MISSED_PING_THRESH       = 1,
-    OAM_CB_RECOVER_PING_THRESH      = 2,
+    OAM_LB_CB_DEFAULT                  = 0,
+    OAM_LB_CB_MISSED_PING_THRESH       = 1,
+    OAM_LB_CB_RECOVER_PING_THRESH      = 2,
 };
 
-struct oam_session_params {
-    char if_name[IF_NAME_SIZE];                                 /* Network interface name */
-    char dst_mac[ETH_STR_LEN];                                  /* Destination MAC address in string format */
-    uint32_t interval_ms;                                       /* Ping interval in miliseconds */
-    uint32_t missed_consecutive_ping_threshold;                 /* Counter for consecutive missed pings */
-    uint32_t ping_recovery_threshold;                           /* Recovery threshold counter */
-    bool is_oneshot;                                            /* Flag for oneshot operation */
-    void (*callback)(struct cb_status *status);                 /* Callback function */
-    char net_ns[NET_NS_SIZE];                                   /* Network namespace name */
-    uint8_t md_level;                                           /* Maintenance domain level */
-    uint16_t vlan_id;                                           /* VLAN identifier */
-    uint8_t pcp;                                                /* Frame priority level (from 802.1q header) */
-    char log_file[MAX_PATH];
-};
-
-struct oam_lb_session {
-    uint8_t *src_mac;
-    uint8_t *dst_mac;
-    uint32_t transaction_id;
-    int sockfd;
-    struct timespec time_sent;
-    struct timespec time_received;
-    bool is_session_configured;
-    struct oam_lb_pdu *frame;                                   /* Pointer to lbm frame */
-    libnet_ptag_t *eth_ptag;                                    /* Pointer to libnet ETH tag */
-    libnet_t *l;                                                /* libnet context */
-    struct oam_lbm_timer *lbm_tx_timer;                         /* Pointer to LBM tx timer */
-    uint16_t vlan_id;                                           /* VLAN identifier */
-    uint8_t pcp;                                                /* Frame priority level */
-    volatile bool send_next_frame;
-
-};
-
-/* Data passed to per session timer */
-struct oam_lbm_timer {
-    bool is_timer_created;
-    timer_t timer_id;                                           /* POSIX interval timer id */
-    struct itimerspec *ts;
-};
+oam_session_id oam_session_start(struct oam_lb_session_params *params, enum oam_session_type session_type);
+void oam_session_stop(oam_session_id session_id);
 
 #endif //_OAM_SESSION_H
