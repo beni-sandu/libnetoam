@@ -115,7 +115,7 @@ static inline void oam_update_lb_frame(struct oam_lb_pdu *frame, struct oam_lb_s
 			current_session->src_mac,           /* MAC of local interface */
 			ETHERTYPE_VLAN,                     /* Tag protocol identifier */
 			current_session->pcp,               /* Priority code point */
-			0x1,                                /* Drop eligible indicator(formerly CFI) */
+			current_session->dei,               /* Drop eligible indicator(formerly CFI) */
 			current_session->vlan_id,           /* VLAN identifier */
 			ETHERTYPE_OAM,                      /* Protocol type */
 			(uint8_t *)frame,                   /* Payload (LBM frame filled above) */

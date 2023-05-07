@@ -20,6 +20,7 @@ Supported parameters for a LBM session
 - vlan_id - Virtual LAN identifier
 - pcp - Priority code point (from 802.1q header)
 - log_file - Path to a log file that can be used to store log messages
+- dei - Drop eligible indicator (from 802.1q header)
 
 Supported parameters for a LBR session
 --------------------------------------

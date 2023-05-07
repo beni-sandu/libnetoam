@@ -47,6 +47,7 @@ struct oam_lb_session_params {
     uint8_t md_level;                                           /* Maintenance domain level */
     uint16_t vlan_id;                                           /* VLAN identifier */
     uint8_t pcp;                                                /* Frame priority level (from 802.1q header) */
+    bool dei;                                                   /* Drop eligible indicator */
     char log_file[MAX_PATH];
 };
 
@@ -65,6 +66,7 @@ struct oam_lb_session {
     uint16_t vlan_id;                                           /* VLAN identifier */
     uint8_t pcp;                                                /* Frame priority level */
     volatile bool send_next_frame;
+    bool dei;                                                   /* Drop eligible indicator */
 
 };
 

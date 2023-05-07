@@ -250,13 +250,14 @@ void *oam_session_run_lbm(void *args)
                 current_session.pcp = current_params->pcp;
             }
             current_session.vlan_id = current_params->vlan_id;
+            current_session.dei = current_params->dei;
 
             eth_ptag = libnet_build_802_1q(
                 (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
                 (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
                 ETHERTYPE_VLAN,                                         /* Tag protocol identifier */
                 current_session.pcp,                                    /* Priority code point */
-                0x1,                                                    /* Drop eligible indicator(formerly CFI) */
+                current_session.dei,                                    /* Drop eligible indicator(formerly CFI) */
                 current_session.vlan_id,                                /* VLAN identifier */
                 ETHERTYPE_OAM,                                          /* Protocol type */
                 (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
