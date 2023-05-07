@@ -136,8 +136,6 @@ void *oam_session_run_lbm(void *args)
     lbm_replied_pings = 0;
     is_lbm_session_recovered = true;
 
-    int flag_enable = 1;
-
     callback_status.cb_ret = OAM_LB_CB_DEFAULT;
     callback_status.session_params = current_params;
 
@@ -311,14 +309,6 @@ void *oam_session_run_lbm(void *args)
 
     /* Store the sockfd so we can close it from the cleanup handler */
     current_session.sockfd = sockfd;
-
-    /* Make socket address reusable (TODO: check if this is needed for raw sockets, I suspect not) */
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag_enable, sizeof(flag_enable)) < 0) {
-        fprintf(stderr, "Can't configure socket address to be reused.\n");
-        current_thread->ret = -1;
-        sem_post(&current_thread->sem);
-        pthread_exit(NULL);
-    }
 
     /* Get interface index */
     if_index = if_nametoindex(current_params->if_name);
@@ -579,14 +569,6 @@ void *oam_session_run_lbr(void *args)
 
     /* Copy socket fd */
     current_session.sockfd = sockfd;
-
-    /* Make socket address reusable (TODO: check if this is needed for raw sockets, I suspect not) */
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag_enable, sizeof(flag_enable)) < 0) {
-        fprintf(stderr, "Can't configure socket address to be reused.\n");
-        current_thread->ret = -1;
-        sem_post(&current_thread->sem);
-        pthread_exit(NULL);
-    }
 
     /* Enable packet auxdata */
     if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
