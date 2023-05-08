@@ -57,6 +57,7 @@ __thread uint8_t recv_buf[ETH_DATA_LEN];                    /* Buffer for incomi
 __thread struct cb_status callback_status;
 __thread uint32_t lbm_missed_pings;
 __thread uint32_t lbm_replied_pings;
+__thread uint32_t lbm_multicast_replies;
 __thread bool is_lbm_session_recovered;
 __thread libnet_ptag_t eth_ptag = 0;
 __thread cap_t caps;
@@ -129,11 +130,15 @@ void *oam_session_run_lbm(void *args)
     current_session.eth_ptag = &eth_ptag;
     current_session.is_session_configured = false;
     current_session.send_next_frame = true;
+    current_session.interval_ms = current_params->interval_ms;
+    current_session.is_multicast = false;
+
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
     lbm_missed_pings = 0;
     lbm_replied_pings = 0;
+    lbm_multicast_replies = 0;
     is_lbm_session_recovered = true;
 
     callback_status.cb_ret = OAM_LB_CB_DEFAULT;
@@ -218,7 +223,29 @@ void *oam_session_run_lbm(void *args)
     }
 
     /* Get destination MAC address */
-    if (hwaddr_str2bin(current_params->dst_mac, dst_hwaddr) == -1) {
+    if (current_params->is_multicast == true) {
+
+        /* If session is multicast, we need to adjust some parameters */
+
+        /* Set destination ETH address to broadcast */
+        memset(dst_hwaddr, 0xff, ETH_ALEN);
+        current_session.is_multicast = true;
+
+        /* Thresholds and callback are not used during multicast */
+        current_params->missed_consecutive_ping_threshold = 0;
+        current_params->ping_recovery_threshold = 0;
+        current_params->is_oneshot = false;
+        current_params->callback = NULL;
+
+        /* We should probably ignore VLAN headers too? */
+        current_params->vlan_id = 0;
+        current_params->pcp = 0;
+
+        /* Standard says that interval should be 5s for ETH-LB multicast mode */
+        if (current_session.interval_ms < 5000)
+            current_session.interval_ms = 5000;
+
+    } else if (hwaddr_str2bin(current_params->dst_mac, dst_hwaddr) == -1) {
         fprintf(stderr, "Error getting destination MAC address.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -283,10 +310,10 @@ void *oam_session_run_lbm(void *args)
     tx_sev.sigev_value.sival_ptr = &current_session;            /* Pointer passed to handler */
 
     /* Configure TX interval */
-    tx_ts.it_interval.tv_sec = current_params->interval_ms / 1000;
-    tx_ts.it_interval.tv_nsec = current_params->interval_ms % 1000 * 1000000;
-    tx_ts.it_value.tv_sec = current_params->interval_ms / 1000;
-    tx_ts.it_value.tv_nsec = current_params->interval_ms % 1000 * 1000000;
+    tx_ts.it_interval.tv_sec = current_session.interval_ms / 1000;
+    tx_ts.it_interval.tv_nsec = current_session.interval_ms % 1000 * 1000000;
+    tx_ts.it_value.tv_sec = current_session.interval_ms / 1000;
+    tx_ts.it_value.tv_nsec = current_session.interval_ms % 1000 * 1000000;
 
     /* Create TX timer */
     if (timer_create(CLOCK_REALTIME, &tx_sev, &(tx_timer.timer_id)) == -1) {
@@ -368,79 +395,102 @@ void *oam_session_run_lbm(void *args)
                 sem_post(&current_thread->sem);
                 pthread_exit(NULL);
             }
-        
-            /* Check our socket for a reply */
-            numbytes = recvmsg_ppoll(sockfd, &recv_hdr, current_params->interval_ms);
 
-            /* We didn't get any response in the expected interval */
-            if (numbytes == -2) {
-                lbm_missed_pings++;
-                lbm_replied_pings = 0;
-                is_lbm_session_recovered = false;
-                printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
-            }
+            /* We need another loop if session is multicast */
+            while (true && (current_session.send_next_frame != true)) {
 
-            /* If we reached the missed pings threshold, use callback */
-            if (current_params->missed_consecutive_ping_threshold > 0) {
-                if (lbm_missed_pings == current_params->missed_consecutive_ping_threshold) {
-                    if (current_params->callback != NULL) {
-                        callback_status.cb_ret = OAM_LB_CB_MISSED_PING_THRESH;
-                        current_params->callback(&callback_status);
+                /* Check our socket for a reply */
+                numbytes = recvmsg_ppoll(sockfd, &recv_hdr, current_session.interval_ms);
+
+                if (current_session.is_multicast != true) {
+                    /* We didn't get any response in the expected interval */
+                    if (numbytes == -2) {
+                        lbm_missed_pings++;
+                        lbm_replied_pings = 0;
+                        is_lbm_session_recovered = false;
+                        printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
                     }
-
-                    /* Reset counter */
-                    lbm_missed_pings = 0;
-
-                    /* If it is oneshot operation, close session */
-                    if (current_params->is_oneshot == true)
-                        pthread_exit(NULL);
                 }
-            }
 
-            /* We got something, check data */
-            if (numbytes > 0) {
+                /* If we reached the missed pings threshold, use callback */
+                if (current_params->missed_consecutive_ping_threshold > 0) {
+                    if (lbm_missed_pings == current_params->missed_consecutive_ping_threshold) {
+                        if (current_params->callback != NULL) {
+                            callback_status.cb_ret = OAM_LB_CB_MISSED_PING_THRESH;
+                            current_params->callback(&callback_status);
+                        }
 
-                /* If it is not an OAM frame, drop it */
-                eh = (struct ether_header *)recv_buf;
-                if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
-                    continue;
+                        /* Reset counter */
+                        lbm_missed_pings = 0;
 
-                /* If frame is not addressed to this interface, drop it */
-                if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
-                    continue;
-            
-                /* Get aprox timestamp of received frame */
-                clock_gettime(CLOCK_REALTIME, &current_session.time_received);
+                        /* If it is oneshot operation, close session */
+                        if (current_params->is_oneshot == true)
+                            pthread_exit(NULL);
+                    }
+                }
 
-                /* If frame is not OAM LBR, discard it */
-                lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
-                if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
-                    continue;
-            
-                /* We are receiving pings, reset missed counter */
-                lbm_missed_pings = 0;
-                lbm_replied_pings++;
+                /* We got something, check data */
+                if (numbytes > 0) {
 
-                /* If we missed pings before, we are on a recovery path */
-                if (current_params->ping_recovery_threshold > 0) {
-                    if (is_lbm_session_recovered == false) {
+                    /* Get ETH header */
+                    eh = (struct ether_header *)recv_buf;
 
-                        /* We reached recovery threshold, use callback */
-                        if (current_params->ping_recovery_threshold == lbm_replied_pings) {
-                            is_lbm_session_recovered = true;
-                            if (current_params->callback != NULL) {
-                                callback_status.cb_ret = OAM_LB_CB_RECOVER_PING_THRESH;
-                                current_params->callback(&callback_status);
+                    /* If frame is not addressed to this interface, drop it */
+                    if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+                        continue;
+
+                    /* If it is not an OAM frame, drop it */
+                    if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
+                        continue;
+
+                    /* Get aprox timestamp of received frame */
+                    clock_gettime(CLOCK_REALTIME, &current_session.time_received);
+
+                    /* If frame is not OAM LBR, discard it */
+                    lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+                    if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
+                        continue;
+
+                    /* We are receiving pings, reset missed counter */
+                    lbm_missed_pings = 0;
+                    lbm_replied_pings++;
+
+                    if (current_session.is_multicast == true)
+                        lbm_multicast_replies++;
+
+                    /* If we missed pings before, we are on a recovery path */
+                    if (current_params->ping_recovery_threshold > 0) {
+                        if (is_lbm_session_recovered == false) {
+
+                            /* We reached recovery threshold, use callback */
+                            if (current_params->ping_recovery_threshold == lbm_replied_pings) {
+                                is_lbm_session_recovered = true;
+                                if (current_params->callback != NULL) {
+                                    callback_status.cb_ret = OAM_LB_CB_RECOVER_PING_THRESH;
+                                    current_params->callback(&callback_status);
+                                }
                             }
                         }
                     }
+
+                    printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
+                            eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
+                            ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
+                            (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
                 }
 
-                printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
-                        eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
-                        ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
-                        (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));     
+                /* If session is not multicast, break the loop and send another frame, otherwise check for data again */
+                if (current_session.is_multicast == false)
+                    break;
             }
+
+            if (current_session.is_multicast == true) {
+                if (lbm_multicast_replies == 0)
+                    printf("No replies to multicast LBM on interface: %s, trans_id: %d\n", current_params->if_name, current_session.transaction_id - 1);
+            }
+
+            /* Reset counter */
+            lbm_multicast_replies = 0;
         }
     }
 
@@ -463,6 +513,7 @@ void *oam_session_run_lbr(void *args)
     struct oam_lb_pdu *lbr_frame_p;
     int c;
     struct oam_lb_session current_session;
+    const uint8_t eth_broadcast[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
     /* Setup buffer and header structs for received packets */
     uint8_t recv_buf[8192];
@@ -602,6 +653,9 @@ void *oam_session_run_lbr(void *args)
         pthread_exit(NULL);
     }
 
+    /* Seed random generator used for multicast LBRs */
+    srandom((uint64_t)current_params);
+
     /* Session configuration is successful, return a valid session id */
     current_session.is_session_configured = true;
 
@@ -623,19 +677,29 @@ void *oam_session_run_lbr(void *args)
             if (is_frame_tagged(&recv_hdr) == true)
                 continue;
             
-            /* If it is not an OAM frame, drop it */
+            /* Get ETH header */
             eh = (struct ether_header *)recv_buf;
+            
+            /* If it is not an OAM frame, drop it */
             if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
-                continue;
-
-            /* If frame is not addressed to this interface, drop it */
-            if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
                 continue;
 
             /* If frame is not OAM LBM, discard it */
             lbr_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
             if (lbr_frame_p->oam_header.opcode != OAM_OP_LBM)
                 continue;
+            
+            /* Is frame addressed to this interface? */
+            if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0) {
+
+                /* Is it broadcast or multicast? */
+                if((memcmp(eh->ether_dhost, eth_broadcast, ETH_ALEN) == 0) || (eh->ether_dhost[0] == 0x1)) {
+                    pr_debug("Got multicast frame.\n");
+                    current_session.is_frame_multicast = true;
+                } else
+                    /* Otherwise drop it */
+                    continue;
+            }
 
             /* Except for the LBR Opcode, all OAM specific PDU data is copied from the received LBM frame */
             memcpy(&lb_frame, lbr_frame_p, sizeof(struct oam_lb_pdu));
@@ -654,7 +718,13 @@ void *oam_session_run_lbr(void *args)
                 l,                                                      /* libnet handle */
                 eth_ptag);                                              /* libnet tag */
         
-            /* Send OAM frame on wire */
+            /* If frame is multicast/broadcast, add delay between 0s - 1s as per standard */
+            if (current_session.is_frame_multicast == true) {
+                usleep(1000 * (random() % 1000));
+                current_session.is_frame_multicast = false;
+            }
+
+            /* Send frame on wire */
             c = libnet_write(l);
 
             if (c == -1) {

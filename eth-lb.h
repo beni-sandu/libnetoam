@@ -49,6 +49,7 @@ struct oam_lb_session_params {
     uint8_t pcp;                                                /* Frame priority level (from 802.1q header) */
     bool dei;                                                   /* Drop eligible indicator */
     char log_file[MAX_PATH];
+    bool is_multicast;                                          /* Flag for multicast sessions */
 };
 
 struct oam_lb_session {
@@ -67,7 +68,9 @@ struct oam_lb_session {
     uint8_t pcp;                                                /* Frame priority level */
     volatile bool send_next_frame;
     bool dei;                                                   /* Drop eligible indicator */
-
+    bool is_frame_multicast;
+    uint32_t interval_ms;
+    bool is_multicast;
 };
 
 /* Data passed to per session timer */

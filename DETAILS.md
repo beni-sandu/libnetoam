@@ -21,6 +21,7 @@ Supported parameters for a LBM session
 - pcp - Priority code point (from 802.1q header)
 - log_file - Path to a log file that can be used to store log messages
 - dei - Drop eligible indicator (from 802.1q header)
+- is_multicast - Flag used to configure an ETH-LB multicast session
 
 Supported parameters for a LBR session
 --------------------------------------
