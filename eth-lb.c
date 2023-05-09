@@ -408,7 +408,9 @@ void *oam_session_run_lbm(void *args)
                         lbm_missed_pings++;
                         lbm_replied_pings = 0;
                         is_lbm_session_recovered = false;
-                        printf("Request timeout for interface: %s, transaction_id: %d\n", current_params->if_name, current_session.transaction_id);
+                        printf("Request timeout for interface: %s, trans_id: %d\n", current_params->if_name, current_session.transaction_id);
+                        pr_log(current_params->log_file, "Request timeout for interface: %s, trans_id: %d\n",
+                                current_params->if_name, current_session.transaction_id);
                     }
                 }
 
@@ -462,6 +464,11 @@ void *oam_session_run_lbm(void *args)
                             eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
                             ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
+
+                    pr_log(current_params->log_file, "Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
+                            eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
+                            ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
+                            (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
                     
                     /* If we missed pings before, we are on a recovery path */
                     if (current_params->ping_recovery_threshold > 0) {
@@ -485,8 +492,11 @@ void *oam_session_run_lbm(void *args)
             }
 
             if (current_session.is_multicast == true) {
-                if (lbm_multicast_replies == 0)
+                if (lbm_multicast_replies == 0) {
                     printf("No replies to multicast LBM on interface: %s, trans_id: %d\n", current_params->if_name, current_session.transaction_id - 1);
+                    pr_log(current_params->log_file, "No replies to multicast LBM on interface: %s, trans_id: %d\n",
+                            current_params->if_name, current_session.transaction_id - 1);
+                }
             }
 
             /* Reset counter */
