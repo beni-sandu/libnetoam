@@ -11,7 +11,7 @@ Q=@
 endif
 
 # Use DEBUG_ENABLE=1 for a debug build
-DEBUG_ENABLE ?= 1
+DEBUG_ENABLE ?= 0
 ifeq ($(DEBUG_ENABLE), 1)
 CFLAGS += -DDEBUG_ENABLE -g
 endif
