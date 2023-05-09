@@ -458,6 +458,11 @@ void *oam_session_run_lbm(void *args)
                     if (current_session.is_multicast == true)
                         lbm_multicast_replies++;
 
+                    printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
+                            eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
+                            ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
+                            (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
+                    
                     /* If we missed pings before, we are on a recovery path */
                     if (current_params->ping_recovery_threshold > 0) {
                         if (is_lbm_session_recovered == false) {
@@ -472,11 +477,6 @@ void *oam_session_run_lbm(void *args)
                             }
                         }
                     }
-
-                    printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
-                            eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
-                            ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
-                            (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
                 }
 
                 /* If session is not multicast, break the loop and send another frame, otherwise check for data again */
