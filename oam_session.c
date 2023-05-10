@@ -37,7 +37,7 @@
 oam_session_id oam_session_start(void *params, enum oam_session_type session_type)
 {    
     pthread_t session_id;
-    int ret;
+    int ret = 0;
     struct oam_session_thread new_thread;
 
     new_thread.session_params = params;
