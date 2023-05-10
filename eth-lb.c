@@ -372,6 +372,9 @@ void *oam_session_run_lbm(void *args)
 
         if (current_session.send_next_frame == true) {
             
+            /* Bump transaction id */
+            current_session.transaction_id++;
+            
             /* Update frame and send on wire */
             oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
             oam_update_lb_frame(&lb_frame, &current_session, current_session.eth_ptag, l);
@@ -757,7 +760,6 @@ void lbm_timeout_handler(union sigval sv)
 {
     struct oam_lb_session *current_session = sv.sival_ptr;
 
-    current_session->transaction_id++;
     current_session->send_next_frame = true;
 }
 
