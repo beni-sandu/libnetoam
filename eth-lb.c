@@ -386,7 +386,8 @@ void *oam_session_run_lbm(void *args)
 
             /* Get aprox timestamp of sent frame */
             clock_gettime(CLOCK_REALTIME, &(current_session.time_sent));
-            pr_debug("Sent LBM with transaction id: %d\n", current_session.transaction_id);
+            printf("[%s] Sent LBM with trans_id: %d\n", current_params->if_name, current_session.transaction_id);
+            pr_log(current_params->log_file, "[%s] Sent LBM with trans_id: %d\n", current_params->if_name, current_session.transaction_id);
 
             /* Reset timer */
             if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
@@ -408,8 +409,8 @@ void *oam_session_run_lbm(void *args)
                         lbm_missed_pings++;
                         lbm_replied_pings = 0;
                         is_lbm_session_recovered = false;
-                        printf("Request timeout for interface: %s, trans_id: %d\n", current_params->if_name, current_session.transaction_id);
-                        pr_log(current_params->log_file, "Request timeout for interface: %s, trans_id: %d\n",
+                        printf("[%s] Request timeout for trans_id: %d\n", current_params->if_name, current_session.transaction_id);
+                        pr_log(current_params->log_file, "[%s] Request timeout for trans_id: %d\n",
                                 current_params->if_name, current_session.transaction_id);
                     }
                 }
@@ -460,14 +461,15 @@ void *oam_session_run_lbm(void *args)
                     if (current_session.is_multicast == true)
                         lbm_multicast_replies++;
 
-                    printf("Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
-                            eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
+                    printf("[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", current_params->if_name,
+                            eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
                             ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
 
-                    pr_log(current_params->log_file, "Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n", eh->ether_shost[0],
-                            eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3], eh->ether_shost[4],eh->ether_shost[5],
-                            ntohl(lbm_frame_p->transaction_id), ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
+                    pr_log(current_params->log_file, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n",
+                            current_params->if_name, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
+                            eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
+                            ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
                     
                     /* If we missed pings before, we are on a recovery path */
@@ -493,8 +495,8 @@ void *oam_session_run_lbm(void *args)
 
             if (current_session.is_multicast == true) {
                 if (lbm_multicast_replies == 0) {
-                    printf("No replies to multicast LBM on interface: %s, trans_id: %d\n", current_params->if_name, current_session.transaction_id - 1);
-                    pr_log(current_params->log_file, "No replies to multicast LBM on interface: %s, trans_id: %d\n",
+                    printf("[%s] No replies to multicast LBM, trans_id: %d\n", current_params->if_name, current_session.transaction_id - 1);
+                    pr_log(current_params->log_file, "[%s] No replies to multicast LBM, trans_id: %d\n",
                             current_params->if_name, current_session.transaction_id - 1);
                 }
             }
