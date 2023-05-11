@@ -29,7 +29,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <linux/if_packet.h>
 #include <arpa/inet.h>
 #include <net/ethernet.h>
 #include <ctype.h>
@@ -207,7 +206,8 @@ bool is_eth_vlan(char *if_name)
     }
 }
 
-bool is_frame_tagged(struct msghdr *recv_msg)
+/* Check if ETH frame has a 802.1q header. If it does, copy the auxdata in buffer provided by second parameter */
+bool is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf)
 {
     for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(recv_msg); cmsg != NULL; cmsg = CMSG_NXTHDR(recv_msg, cmsg)) {
         if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct tpacket_auxdata)) ||
@@ -218,6 +218,8 @@ bool is_frame_tagged(struct msghdr *recv_msg)
             struct tpacket_auxdata *auxp = (struct tpacket_auxdata *)CMSG_DATA(cmsg);
 
             if (VLAN_VALID(auxp, auxp)) {
+                if (aux_buf != NULL)
+                    memcpy(aux_buf, auxp, sizeof(struct tpacket_auxdata));
                 return true;
                 break;
             }

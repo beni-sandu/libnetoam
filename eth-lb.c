@@ -64,6 +64,7 @@ __thread cap_t caps;
 __thread cap_flag_value_t cap_val;
 __thread int ns_fd;
 __thread char ns_buf[MAX_PATH] = "/run/netns/";
+__thread struct tpacket_auxdata recv_auxdata;
 
 ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, int timeout_ms)
 {
@@ -105,6 +106,7 @@ void *oam_session_run_lbm(void *args)
     int if_index = 0;
     struct ether_header *eh;
     struct oam_lb_pdu *lbm_frame_p;
+    int flag_enable = 1;
 
     /* Setup buffer and header structs for received packets */
     uint8_t recv_buf[8192];
@@ -112,7 +114,6 @@ void *oam_session_run_lbm(void *args)
           .iov_base = recv_buf,
           .iov_len = 8192,
     };
-
 	union {
           struct cmsghdr cmsg;
           char buf[CMSG_SPACE(sizeof(struct tpacket_auxdata))];
@@ -133,6 +134,7 @@ void *oam_session_run_lbm(void *args)
     current_session.interval_ms = current_params->interval_ms;
     current_session.is_multicast = false;
     current_session.meg_level = current_params->meg_level;
+    current_session.custom_vlan = false;
 
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
@@ -279,6 +281,7 @@ void *oam_session_run_lbm(void *args)
             }
             current_session.vlan_id = current_params->vlan_id;
             current_session.dei = current_params->dei;
+            current_session.custom_vlan = true;
 
             eth_ptag = libnet_build_802_1q(
                 (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
@@ -329,7 +332,7 @@ void *oam_session_run_lbm(void *args)
     pr_debug("TX timer ID: %p\n", tx_timer.timer_id);
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
         perror("socket");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -338,6 +341,14 @@ void *oam_session_run_lbm(void *args)
 
     /* Store the sockfd so we can close it from the cleanup handler */
     current_session.sockfd = sockfd;
+
+    /* Enable packet auxdata */
+    if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
+        fprintf(stderr, "Can't enable packet auxdata.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
 
     /* Get interface index */
     if_index = if_nametoindex(current_params->if_name);
@@ -352,7 +363,7 @@ void *oam_session_run_lbm(void *args)
     memset(&sll, 0, sizeof(struct sockaddr_ll));
     sll.sll_family = AF_PACKET;
     sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETHERTYPE_OAM);
+    sll.sll_protocol = htons(ETH_P_ALL);
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
@@ -439,19 +450,37 @@ void *oam_session_run_lbm(void *args)
                 /* We got something, check data */
                 if (numbytes > 0) {
 
+                    /* Get aprox timestamp of received frame */
+                    clock_gettime(CLOCK_REALTIME, &current_session.time_received);
+
                     /* Get ETH header */
                     eh = (struct ether_header *)recv_buf;
 
                     /* If frame is not addressed to this interface, drop it */
                     if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
                         continue;
+                    
+                    /* Is the received frame tagged? */
+                    if (is_frame_tagged(&recv_hdr, &recv_auxdata) == true) {
+
+                        /*
+                         * If frame is tagged, but we didn't add a custom header ourselves, it should be dropped,
+                         * as it is intended for a VLAN ETH that has this interface as a primary one.
+                         */
+                        if (current_session.custom_vlan == false)
+                            continue;
+                        else {
+                            /* If we did add a custom tag, check for correct VLAN ID */
+                            if ((recv_auxdata.tp_vlan_tci & 0xfff) != current_session.vlan_id) {
+                                pr_debug("Dropping frame with different VLAN ID\n");
+                                continue;
+                            }
+                        }   
+                    }
 
                     /* If it is not an OAM frame, drop it */
                     if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
                         continue;
-
-                    /* Get aprox timestamp of received frame */
-                    clock_gettime(CLOCK_REALTIME, &current_session.time_received);
 
                     /* If frame is not OAM LBR, discard it */
                     lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
@@ -705,7 +734,7 @@ void *oam_session_run_lbr(void *args)
             pr_debug("Received frame on LBR session, %ld bytes.\n", numbytes);
             
             /* If frame has a tag, it is not for us */
-            if (is_frame_tagged(&recv_hdr) == true)
+            if (is_frame_tagged(&recv_hdr, NULL) == true)
                 continue;
             
             /* Get ETH header */

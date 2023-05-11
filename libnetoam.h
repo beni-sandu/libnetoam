@@ -32,6 +32,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <linux/if_packet.h>
 
 #include "oam_session.h"
 #include "eth-lb.h"
@@ -53,7 +54,7 @@ void oam_session_stop(oam_session_id session_id);
 int get_eth_mac(char *if_name, uint8_t *mac_addr);
 int hwaddr_str2bin(char *mac, uint8_t *addr);
 bool is_eth_vlan(char *if_name);
-bool is_frame_tagged(struct msghdr *recv_msg);
+bool is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf);
 void pr_log(char *log_file, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 
 #ifdef __cplusplus
