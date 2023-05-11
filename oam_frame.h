@@ -69,7 +69,7 @@ enum oam_tlv_type {
  *  Common OAM Header
  *                       octet
  * +------------------+
- * | MD Level         |  1 (high-order 3 bits)
+ * | MEG level        |  1 (high-order 3 bits)
  * +------------------+
  * | Version          |  1 (low-order 5 bits)
  * +------------------+
@@ -83,7 +83,7 @@ enum oam_tlv_type {
 
 struct oam_common_header {
 	union {
-		uint8_t md_level;
+		uint8_t meg_level;
 		uint8_t version;
 	} byte1;
 	uint8_t opcode;
@@ -140,7 +140,7 @@ static inline void oam_update_lb_frame(struct oam_lb_pdu *frame, struct oam_lb_s
 }
 
 /* Prototypes */
-void oam_build_common_header(uint8_t md_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
+void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
 		uint8_t tlv_offset, struct oam_common_header *header);
 void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame);
 

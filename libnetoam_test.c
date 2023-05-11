@@ -35,6 +35,7 @@ int main(void)
         .missed_consecutive_ping_threshold = 5,
         .ping_recovery_threshold = 5,
         .callback = &lbm_callback,
+        .meg_level = 0,
     };
     
     printf("Running with: %s\n", netoam_lib_version());

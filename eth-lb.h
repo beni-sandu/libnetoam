@@ -44,7 +44,7 @@ struct oam_lb_session_params {
     bool is_oneshot;                                            /* Flag for oneshot operation */
     void (*callback)(struct cb_status *status);                 /* Callback function */
     char net_ns[NET_NS_SIZE];                                   /* Network namespace name */
-    uint8_t md_level;                                           /* Maintenance domain level */
+    uint8_t meg_level;                                          /* Maintenance entity group level */
     uint16_t vlan_id;                                           /* VLAN identifier */
     uint8_t pcp;                                                /* Frame priority level (from 802.1q header) */
     bool dei;                                                   /* Drop eligible indicator */
@@ -71,6 +71,7 @@ struct oam_lb_session {
     bool is_frame_multicast;
     uint32_t interval_ms;
     bool is_multicast;
+    uint8_t meg_level;
 };
 
 /* Data passed to per session timer */

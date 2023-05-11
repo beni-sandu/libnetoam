@@ -62,9 +62,10 @@ oam_session_id s1_lbm = 0, s1_lbr = 0;
 struct oam_lb_session_params s1_lbm_params = {
         .if_name = "eth0",
         .dst_mac = "74:78:27:28:bb:cc",
-        .interval_ms = 1000,
+        .interval_ms = 5000,
         .missed_consecutive_ping_threshold = 5,
         .callback = &lbm_callback,
+        .meg_level = 0,
 };
 
 struct oam_lb_session_params s1_lbr_params = {

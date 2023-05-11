@@ -132,6 +132,7 @@ void *oam_session_run_lbm(void *args)
     current_session.send_next_frame = true;
     current_session.interval_ms = current_params->interval_ms;
     current_session.is_multicast = false;
+    current_session.meg_level = current_params->meg_level;
 
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
@@ -261,7 +262,7 @@ void *oam_session_run_lbm(void *args)
     current_session.transaction_id = random();
 
     /* Build oam common header for LMB frames */
-    oam_build_common_header(current_params->md_level, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
+    oam_build_common_header(current_session.meg_level, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
 
     /* Build Ethernet header */
 
@@ -456,6 +457,13 @@ void *oam_session_run_lbm(void *args)
                     lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
                     if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
                         continue;
+                    
+                    /* Check MEG level*/
+                    if (((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
+                        pr_debug("Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                                    current_session.meg_level);
+                        continue;
+                    }
 
                     /* We are receiving pings, reset missed counter */
                     lbm_missed_pings = 0;
@@ -547,6 +555,8 @@ void *oam_session_run_lbr(void *args)
           .msg_control = &cmsg_buf,
           .msg_controllen = sizeof(cmsg_buf)
      };
+
+    current_session.meg_level = current_params->meg_level;
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
@@ -714,6 +724,13 @@ void *oam_session_run_lbr(void *args)
                 } else
                     /* Otherwise drop it */
                     continue;
+            }
+
+            /* Check MEG level*/
+            if (((lbr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
+                pr_debug("Ignoring LBM with different MEG level: %d != %d\n", ((lbr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                            current_session.meg_level);
+                continue;
             }
 
             /* Except for the LBR Opcode, all OAM specific PDU data is copied from the received LBM frame */

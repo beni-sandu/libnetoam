@@ -16,7 +16,7 @@ Supported parameters for a LBM session
 - is_oneshot - Flag for oneshot operation mode (session is stopped after missed ping value is reached)
 - callback - Callback function that can act on threshold values
 - net_ns - Network namespace
-- md_level - Maintenance domain level (ETH-LB specific)
+- meg_level - Maintenance entity group level (ETH-LB specific)
 - vlan_id - Virtual LAN identifier
 - pcp - Priority code point (from 802.1q header)
 - log_file - Path to a log file that can be used to store log messages
@@ -26,6 +26,7 @@ Supported parameters for a LBM session
 Supported parameters for a LBR session
 --------------------------------------
 - if_name - Name of interface to use for the session
+- meg_level - Maintenance entity group level
 
 Example of a parameter structure for a LBM session:
 
