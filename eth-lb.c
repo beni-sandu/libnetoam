@@ -465,6 +465,12 @@ void *oam_session_run_lbm(void *args)
                         continue;
                     }
 
+                    /* Check transaction ID */
+                    if (ntohl(lbm_frame_p->transaction_id) != current_session.transaction_id) {
+                        pr_debug("Ignoring LBR with different trans_id = %d\n", lbm_frame_p->transaction_id);
+                        continue;
+                    }
+
                     /* We are receiving pings, reset missed counter */
                     lbm_missed_pings = 0;
                     lbm_replied_pings++;
