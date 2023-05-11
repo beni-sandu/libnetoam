@@ -79,14 +79,14 @@ s1_lbr = oam_session_start(&s1_lbr_params, OAM_SESSION_LBR);
 
 // Error checking
 if (s1_lbm > 0)
-    printf("LBM session started successfully: [%s]\n", s1_params.if_name);
+    printf("LBM session started successfully: [%s]\n", s1_lbm_params.if_name);
 else
-    printf("Error starting LBM session: [%s]\n", s1_params.if_name);
+    printf("Error starting LBM session: [%s]\n", s1_lbm_params.if_name);
 
 if (s1_lbr > 0)
-    printf("LBR session started successfully: [%s]\n", s1_params.if_name);
+    printf("LBR session started successfully: [%s]\n", s1_lbr_params.if_name);
 else
-    printf("Error starting LBR session: [%s]\n", s1_params.if_name);
+    printf("Error starting LBR session: [%s]\n", s1_lbr_params.if_name);
 
 // Do your work here...
 
