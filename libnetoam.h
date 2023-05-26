@@ -48,6 +48,9 @@ extern "C" {
 #define pr_debug(...)
 #endif
 
+#define pr_info(file, ...) \
+    ( {printf(__VA_ARGS__) ; pr_log(file, __VA_ARGS__);} )
+
 /* Library interfaces */
 const char *netoam_lib_version(void);
 oam_session_id oam_session_start(void *params, enum oam_session_type session_type);
