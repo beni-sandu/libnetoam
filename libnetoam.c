@@ -116,8 +116,7 @@ int get_eth_mac(char *if_name, uint8_t *mac_addr)
 /* All this code just to find out if an interface is a VLAN, WHY GOD */
 bool is_eth_vlan(char *if_name)
 {
-
-#define RECV_BUFSIZE (32678)
+#define RECV_BUFSIZE (4096)
 
     /* Request message */
     struct req_msq {
@@ -171,7 +170,7 @@ bool is_eth_vlan(char *if_name)
         /* Look through the message */
         for (nh = (struct nlmsghdr *)recv_buf; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
             int rta_len;
-            struct ifinfomsg *msg;
+            struct ifinfomsg *ifi;
             struct rtattr *rta;
 
             /* End of multipart message, interface not found */
@@ -182,22 +181,39 @@ bool is_eth_vlan(char *if_name)
             if (nh->nlmsg_type ==  NLMSG_ERROR)
                 return false;
 
-            msg = (struct ifinfomsg *)NLMSG_DATA(nh);
-            if (msg->ifi_type != ARPHRD_ETHER)
+            /* Skip non ETH interfaces */
+            ifi = (struct ifinfomsg *)NLMSG_DATA(nh);
+            if (ifi->ifi_type != ARPHRD_ETHER)
                 continue;
 
             /* We found our interface */
-            if ((int)if_nametoindex(if_name) == msg->ifi_index) {
+            if ((int)if_nametoindex(if_name) == ifi->ifi_index) {
 
                 /* Read message attributes */
-                rta = IFLA_RTA(msg);
-                rta_len = nh->nlmsg_len - NLMSG_LENGTH(sizeof *msg);
+                rta = IFLA_RTA(ifi);
+                rta_len = nh->nlmsg_len - NLMSG_LENGTH(sizeof(*ifi));
 
                 for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
 
-                    /* Is it a VLAN interface? */
-                    if (rta->rta_type == IFLA_VLAN_PROTOCOL)
-                        return true;
+                    /* Get LINKINFO */
+                    if (rta->rta_type == IFLA_LINKINFO) {
+
+                        struct rtattr *rtk = RTA_DATA(rta);
+                        int rtk_len = RTA_PAYLOAD(rta);
+
+                        /* Follow first chain */
+                        for (; RTA_OK(rtk, rtk_len); rtk = RTA_NEXT(rtk, rtk_len)) {
+                            
+                            /* Get INFO_KIND */
+                            if (rtk->rta_type == IFLA_INFO_KIND) {
+                                
+                                /* Is it a VLAN? */
+                                if (!strcmp(((char *)RTA_DATA(rtk)), "vlan"))
+                                    return true;
+                            }
+                        }
+                        
+                    }
                 }
 
                 return false;
