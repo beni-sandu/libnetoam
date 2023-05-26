@@ -274,7 +274,7 @@ void *oam_session_run_lbm(void *args)
         /* If we a have priority code point or VLAN ID, we need to add a 802.1q header, even if VLAN ID is 0. */
         if (current_params->pcp > 0 || current_params->vlan_id > 0) {
             if (current_params->pcp > 7) {
-                pr_debug("[%s] allowed PCP range is 0 - 7, setting to 0.\n", current_params->if_name);
+                pr_debug(current_params->log_file, "[%s] allowed PCP range is 0 - 7, setting to 0.\n", current_params->if_name);
                 current_session.pcp = 0;
             } else {
                 current_session.pcp = current_params->pcp;
@@ -329,7 +329,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Timer should be created, but we still get a NULL pointer sometimes */
     tx_timer.is_timer_created = true;
-    pr_debug("TX timer ID: %p\n", tx_timer.timer_id);
+    pr_debug(current_params->log_file, "TX timer ID: %p\n", tx_timer.timer_id);
 
     /* Create a raw socket for incoming frames */
     if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
@@ -376,7 +376,7 @@ void *oam_session_run_lbm(void *args)
     /* Session configuration is successful, return a valid session id */
     current_session.is_session_configured = true;
 
-    pr_debug("LBM session configured successfully.\n");
+    pr_debug(current_params->log_file, "LBM session configured successfully.\n");
     sem_post(&current_thread->sem);
 
     /* Processing loop for incoming frames */
@@ -472,7 +472,6 @@ void *oam_session_run_lbm(void *args)
                         else {
                             /* If we did add a custom tag, check for correct VLAN ID */
                             if ((recv_auxdata.tp_vlan_tci & 0xfff) != current_session.vlan_id) {
-                                pr_debug("Dropping frame with different VLAN ID\n");
                                 continue;
                             }
                         }   
@@ -489,14 +488,14 @@ void *oam_session_run_lbm(void *args)
                     
                     /* Check MEG level*/
                     if (((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
-                        pr_debug("Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                        pr_debug(current_params->log_file, "Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
                                     current_session.meg_level);
                         continue;
                     }
 
                     /* Check transaction ID */
                     if (ntohl(lbm_frame_p->transaction_id) != current_session.transaction_id) {
-                        pr_debug("Ignoring LBR with different trans_id = %d\n", ntohl(lbm_frame_p->transaction_id));
+                        pr_debug(current_params->log_file, "Ignoring LBR with different trans_id = %d\n", ntohl(lbm_frame_p->transaction_id));
                         continue;
                     }
 
@@ -719,7 +718,7 @@ void *oam_session_run_lbr(void *args)
     /* Session configuration is successful, return a valid session id */
     current_session.is_session_configured = true;
 
-    pr_debug("LBR session configured successfully.\n");
+    pr_debug(current_params->log_file, "LBR session configured successfully.\n");
     sem_post(&current_thread->sem);
 
     /* Processing loop for incoming packets */
@@ -731,7 +730,7 @@ void *oam_session_run_lbr(void *args)
         /* We got something, look around */
         if (numbytes > 0) {
 
-            pr_debug("Received frame on LBR session, %ld bytes.\n", numbytes);
+            pr_debug(current_params->log_file, "Received frame on LBR session, %ld bytes.\n", numbytes);
             
             /* If frame has a tag, it is not for us */
             if (is_frame_tagged(&recv_hdr, NULL) == true)
@@ -753,17 +752,16 @@ void *oam_session_run_lbr(void *args)
             if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0) {
 
                 /* Is it broadcast or multicast? */
-                if((memcmp(eh->ether_dhost, eth_broadcast, ETH_ALEN) == 0) || (eh->ether_dhost[0] == 0x1)) {
-                    pr_debug("Got multicast frame.\n");
+                if((memcmp(eh->ether_dhost, eth_broadcast, ETH_ALEN) == 0) || (eh->ether_dhost[0] == 0x1))
                     current_session.is_frame_multicast = true;
-                } else
+                else
                     /* Otherwise drop it */
                     continue;
             }
 
             /* Check MEG level*/
             if (((lbr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
-                pr_debug("Ignoring LBM with different MEG level: %d != %d\n", ((lbr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                pr_debug(current_params->log_file, "Ignoring LBM with different MEG level: %d != %d\n", ((lbr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
                             current_session.meg_level);
                 continue;
             }

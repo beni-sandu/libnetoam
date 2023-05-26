@@ -42,7 +42,8 @@ extern "C" {
 
 /* Flag to enable debug messages */
 #ifdef DEBUG_ENABLE
-#define pr_debug(...) printf("[DEBUG] "__VA_ARGS__)
+#define pr_debug(file, ...) \
+    ( {printf("[DEBUG] "__VA_ARGS__) ; pr_log(file, "[DEBUG] "__VA_ARGS__);} )
 #else
 #define pr_debug(...)
 #endif

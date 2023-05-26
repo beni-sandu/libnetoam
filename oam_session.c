@@ -73,7 +73,7 @@ oam_session_id oam_session_start(void *params, enum oam_session_type session_typ
 void oam_session_stop(oam_session_id session_id)
 {
     if (session_id > 0) {
-        pr_debug("Stopping OAM session: %ld\n", session_id);
+        pr_debug(NULL, "Stopping OAM session: %ld\n", session_id);
         pthread_cancel(session_id);
         pthread_join(session_id, NULL);
     }
