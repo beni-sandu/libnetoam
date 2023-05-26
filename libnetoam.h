@@ -49,7 +49,7 @@ extern "C" {
 #endif
 
 #define pr_info(file, ...) \
-    ( {printf(__VA_ARGS__) ; pr_log(file, __VA_ARGS__);} )
+    ( {printf("[INFO] "__VA_ARGS__) ; pr_log(file, "[INFO] "__VA_ARGS__);} )
 
 #define pr_error(file, ...) \
     ( {fprintf(stderr, "[ERROR] "__VA_ARGS__) ; pr_log(file, "[ERROR] "__VA_ARGS__);})
