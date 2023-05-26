@@ -85,7 +85,7 @@ int get_eth_mac(char *if_name, uint8_t *mac_addr)
 
     /* Get a list of network interfaces on the system */
     if (getifaddrs(&addrs) == -1) {
-        perror("getifaddrs");
+        pr_error(NULL, "getifaddrs.\n");
         return EXIT_FAILURE;
     }
 
@@ -144,13 +144,13 @@ bool is_eth_vlan(char *if_name)
     /* Create a netlink route socket */
     int sfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sfd < 0) {
-        perror("socket");
+        pr_error(NULL, "Cannot create NL socket.\n");
         return false;
     }
 
     /* Send the request to kernel */
     if (sendmsg(sfd, &msg, 0) < 0) {
-        perror("sendmsg");
+        pr_error(NULL, "sendmsg.\n");
         return false;
     }
 
@@ -163,7 +163,7 @@ bool is_eth_vlan(char *if_name)
     while (1) {
         int len = recvmsg(sfd, &msg, 0);
         if (len < 0) {
-            perror("recvmsg");
+            pr_error(NULL, "recvmsg.\n");
             return false;
         }
 

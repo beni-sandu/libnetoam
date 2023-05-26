@@ -40,7 +40,7 @@ extern "C" {
 /* Library version */
 #define LIBNETOAM_VERSION "0.1"
 
-/* Flag to enable debug messages */
+/* Print macros */
 #ifdef DEBUG_ENABLE
 #define pr_debug(file, ...) \
     ( {printf("[DEBUG] "__VA_ARGS__) ; pr_log(file, "[DEBUG] "__VA_ARGS__);} )
@@ -50,6 +50,9 @@ extern "C" {
 
 #define pr_info(file, ...) \
     ( {printf(__VA_ARGS__) ; pr_log(file, __VA_ARGS__);} )
+
+#define pr_error(file, ...) \
+    ( {fprintf(stderr, "[ERROR] "__VA_ARGS__) ; pr_log(file, "[ERROR] "__VA_ARGS__);})
 
 /* Library interfaces */
 const char *netoam_lib_version(void);

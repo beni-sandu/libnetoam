@@ -34,6 +34,7 @@
 
 #include "oam_session.h"
 #include "eth-lb.h"
+#include "libnetoam.h"
 
 /*
  * OAM OpCodes
@@ -134,7 +135,7 @@ static inline void oam_update_lb_frame(struct oam_lb_pdu *frame, struct oam_lb_s
 	}
 
 	if (*eth_tag == -1) {
-		fprintf(stderr, "Can't build LBM frame: %s\n", libnet_geterror(l));
+		pr_error(NULL, "Can't build LBM frame: %s\n", libnet_geterror(l));
 		pthread_exit(NULL);
 	}
 }

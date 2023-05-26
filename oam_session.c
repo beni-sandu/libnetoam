@@ -53,11 +53,11 @@ oam_session_id oam_session_start(void *params, enum oam_session_type session_typ
             ret = pthread_create(&session_id, NULL, oam_session_run_lbr, (void *)&new_thread);
             break;
         default:
-            fprintf(stderr, "Invalid OAM session type.\n");
+            pr_error(NULL, "Invalid OAM session type.\n");
     }
 
     if (ret) {
-        fprintf(stderr, "oam_session_start, err: %d\n", ret);
+        pr_error(NULL, "oam_session_start, err: %d\n", ret);
         return -1;
     }
 

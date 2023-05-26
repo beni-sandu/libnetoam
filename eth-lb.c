@@ -81,7 +81,7 @@ ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, int timeout_ms)
     ret = ppoll(fds, 1, &ts, NULL);
 
     if (ret == -1) {
-        perror("ppoll"); //error in ppoll call
+        pr_error(NULL, "ppoll call error.\n"); //error in ppoll call
     }
     else if (ret == 0) {
         return -2; //timeout expired
@@ -153,14 +153,14 @@ void *oam_session_run_lbm(void *args)
     /* Check for CAP_NET_RAW capability */
     caps = cap_get_proc();
     if (caps == NULL) {
-        perror("cap_get_proc");
+        pr_error(current_params->log_file, "cap_get_proc.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
     if (cap_get_flag(caps, CAP_NET_RAW, CAP_EFFECTIVE, &cap_val) == -1) {
-        perror("cap_get_flag");
+        pr_error(current_params->log_file, "cap_get_flag.\n");
         cap_free(caps);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -169,7 +169,7 @@ void *oam_session_run_lbm(void *args)
 
     if (cap_val != CAP_SET) {
         cap_free(caps);
-        fprintf(stderr, "Execution requires CAP_NET_RAW capability.\n");
+        pr_error(current_params->log_file, "Execution requires CAP_NET_RAW capability.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -185,14 +185,14 @@ void *oam_session_run_lbm(void *args)
         ns_fd = open(ns_buf, O_RDONLY);
 
         if (ns_fd == -1) {
-            perror("open ns fd");
+            pr_error(current_params->log_file, "open ns fd.\n");
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
             pthread_exit(NULL);
         }
 
         if (setns(ns_fd, CLONE_NEWNET) == -1) {
-            perror("set ns");
+            pr_error(current_params->log_file, "set ns.\n");
             close(ns_fd);
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
@@ -208,7 +208,7 @@ void *oam_session_run_lbm(void *args)
         libnet_errbuf);                             /* error buffer */
 
     if (l == NULL) {
-        fprintf(stderr, "libnet_init() failed: %s\n", libnet_errbuf);
+        pr_error(current_params->log_file, "libnet_init() failed: %s\n", libnet_errbuf);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -219,7 +219,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Get source MAC address */
     if (get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
-        fprintf(stderr, "Error getting MAC address of local interface.\n");
+        pr_error(current_params->log_file, "Error getting MAC address of local interface.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -249,7 +249,7 @@ void *oam_session_run_lbm(void *args)
             current_session.interval_ms = 5000;
 
     } else if (hwaddr_str2bin(current_params->dst_mac, dst_hwaddr) == -1) {
-        fprintf(stderr, "Error getting destination MAC address.\n");
+        pr_error(current_params->log_file, "Error getting destination MAC address.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -321,7 +321,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Create TX timer */
     if (timer_create(CLOCK_REALTIME, &tx_sev, &(tx_timer.timer_id)) == -1) {
-        perror("timer_create");
+        pr_error(current_params->log_file, "Cannot create timer.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -333,7 +333,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Create a raw socket for incoming frames */
     if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
-        perror("socket");
+        pr_error(current_params->log_file, "Cannot create socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -344,7 +344,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Enable packet auxdata */
     if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
-        fprintf(stderr, "Can't enable packet auxdata.\n");
+        pr_error(current_params->log_file, "Can't enable packet auxdata.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -353,7 +353,7 @@ void *oam_session_run_lbm(void *args)
     /* Get interface index */
     if_index = if_nametoindex(current_params->if_name);
     if (if_index == 0) {
-        perror("if_nametoindex");
+        pr_error(current_params->log_file, "if_nametoindex.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -367,7 +367,7 @@ void *oam_session_run_lbm(void *args)
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
-        perror("bind");
+        pr_error(current_params->log_file, "Cannot bind socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -393,7 +393,7 @@ void *oam_session_run_lbm(void *args)
             int c = libnet_write(l);
 
             if (c == -1) {
-                fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
+                pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
                 continue;
             }
 
@@ -405,7 +405,7 @@ void *oam_session_run_lbm(void *args)
 
             /* Reset timer */
             if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
-                perror("timer settime");
+                pr_error(current_params->log_file, "timer_settime.\n");
                 current_thread->ret = -1;
                 sem_post(&current_thread->sem);
                 pthread_exit(NULL);
@@ -590,14 +590,14 @@ void *oam_session_run_lbr(void *args)
     /* Check for CAP_NET_RAW capability */
     caps = cap_get_proc();
     if (caps == NULL) {
-        perror("cap_get_proc");
+        pr_error(current_params->log_file, "cap_get_proc.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
     if (cap_get_flag(caps, CAP_NET_RAW, CAP_EFFECTIVE, &cap_val) == -1) {
-        perror("cap_get_flag");
+        pr_error(current_params->log_file, "cap_get_flag.\n");
         cap_free(caps);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -606,7 +606,7 @@ void *oam_session_run_lbr(void *args)
 
     if (cap_val != CAP_SET) {
         cap_free(caps);
-        fprintf(stderr, "Execution requires CAP_NET_RAW capability.\n");
+        pr_error(current_params->log_file, "Execution requires CAP_NET_RAW capability.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -622,14 +622,14 @@ void *oam_session_run_lbr(void *args)
         ns_fd = open(ns_buf, O_RDONLY);
 
         if (ns_fd == -1) {
-            perror("open ns fd");
+            pr_error(current_params->log_file, "open ns fd.\n");
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
             pthread_exit(NULL);
         }
 
         if (setns(ns_fd, CLONE_NEWNET) == -1) {
-            perror("set ns");
+            pr_error(current_params->log_file, "set ns.\n");
             close(ns_fd);
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
@@ -645,7 +645,7 @@ void *oam_session_run_lbr(void *args)
         libnet_errbuf);                             /* error buffer */
 
     if (l == NULL) {
-        fprintf(stderr, "libnet_init() failed: %s\n", libnet_errbuf);
+        pr_error(current_params->log_file, "libnet_init() failed: %s\n", libnet_errbuf);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -653,7 +653,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Get source MAC address */
     if (get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
-        fprintf(stderr, "Error getting MAC address of local interface.\n");
+        pr_error(current_params->log_file, "Error getting MAC address of local interface.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -664,7 +664,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Create a raw socket for incoming frames */
     if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
-        perror("socket");
+        pr_error(current_params->log_file, "Cannot create socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -675,7 +675,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Enable packet auxdata */
     if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
-        fprintf(stderr, "Can't enable packet auxdata.\n");
+        pr_error(current_params->log_file, "Can't enable packet auxdata.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -684,7 +684,7 @@ void *oam_session_run_lbr(void *args)
     /* Get interface index */
     if_index = if_nametoindex(current_params->if_name);
     if (if_index == 0) {
-        perror("if_nametoindex");
+        pr_error(current_params->log_file, "if_nametoindex.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -698,7 +698,7 @@ void *oam_session_run_lbr(void *args)
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
-        perror("bind");
+        pr_error(current_params->log_file, "Cannot bind socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -785,7 +785,7 @@ void *oam_session_run_lbr(void *args)
             c = libnet_write(l);
 
             if (c == -1) {
-                fprintf(stderr, "Write error: %s\n", libnet_geterror(l));
+                pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
                 continue;
             }
         }
