@@ -534,7 +534,7 @@ void *oam_session_run_lbm(void *args)
             if (current_session.is_multicast == true) {
                 if (lbm_multicast_replies == 0) {
                     pr_info(current_params->log_file, "[%s] No replies to multicast LBM, trans_id: %d\n",
-                            current_params->if_name, current_session.transaction_id - 1);
+                            current_params->if_name, current_session.transaction_id);
                 }
             }
 
