@@ -27,6 +27,7 @@ Supported parameters for a LBR session
 --------------------------------------
 - if_name - Name of interface to use for the session
 - meg_level - Maintenance entity group level
+- log_file - Path to log file used to store log/error info
 
 Example of a parameter structure for a LBM session:
 
