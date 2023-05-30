@@ -395,6 +395,7 @@ void *oam_session_run_lbm(void *args)
 
             if (c == -1) {
                 pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
+                current_session.send_next_frame = false;
                 continue;
             }
 
