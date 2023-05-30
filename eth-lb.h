@@ -73,6 +73,7 @@ struct oam_lb_session {
     bool is_multicast;
     uint8_t meg_level;
     bool custom_vlan;
+    struct oam_lb_session_params *current_params;
 };
 
 /* Data passed to per session timer */

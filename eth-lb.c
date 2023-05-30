@@ -135,6 +135,7 @@ void *oam_session_run_lbm(void *args)
     current_session.is_multicast = false;
     current_session.meg_level = current_params->meg_level;
     current_session.custom_vlan = false;
+    current_session.current_params = current_params;
 
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
@@ -389,7 +390,7 @@ void *oam_session_run_lbm(void *args)
             
             /* Update frame and send on wire */
             oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
-            oam_update_lb_frame(&lb_frame, &current_session, current_session.eth_ptag, l);
+            oam_update_lb_frame(&current_session);
             int c = libnet_write(l);
 
             if (c == -1) {
