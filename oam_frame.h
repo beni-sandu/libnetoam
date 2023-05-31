@@ -106,39 +106,6 @@ struct oam_lb_pdu {
 	uint8_t end_tlv;
 } __attribute__((__packed__));
 
-/* Wrapper to update OAM LB frame */
-static inline void oam_update_lb_frame(struct oam_lb_session *current_session)
-{
-	if (current_session->pcp > 0 || current_session->vlan_id) {
-		*(current_session->eth_ptag) = libnet_build_802_1q(
-			current_session->dst_mac,           /* Destination MAC */
-			current_session->src_mac,           /* MAC of local interface */
-			ETHERTYPE_VLAN,                     /* Tag protocol identifier */
-			current_session->pcp,               /* Priority code point */
-			current_session->dei,               /* Drop eligible indicator(formerly CFI) */
-			current_session->vlan_id,           /* VLAN identifier */
-			ETHERTYPE_OAM,                      /* Protocol type */
-			(uint8_t *)current_session->frame,  /* Payload (LBM frame filled above) */
-			sizeof(struct oam_lb_pdu),          /* Payload size */
-			current_session->l,                 /* libnet handle */
-			*(current_session->eth_ptag));      /* libnet tag */
-	} else {
-		*(current_session->eth_ptag) = libnet_build_ethernet(
-			current_session->dst_mac,           /* Destination MAC */
-			current_session->src_mac,           /* MAC of local interface */
-			ETHERTYPE_OAM,                      /* Ethernet type */
-			(uint8_t *)current_session->frame,  /* Payload (LBM frame filled above) */
-			sizeof(struct oam_lb_pdu),          /* Payload size */
-			current_session->l,                 /* libnet handle */
-			*(current_session->eth_ptag));      /* libnet tag */
-	}
-
-	if (*(current_session->eth_ptag) == -1) {
-		pr_error(current_session->current_params->log_file, "Can't build LBM frame: %s\n", libnet_geterror(current_session->l));
-		return;
-	}
-}
-
 /* Prototypes */
 void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
 		uint8_t tlv_offset, struct oam_common_header *header);

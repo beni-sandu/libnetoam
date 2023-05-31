@@ -390,10 +390,38 @@ void *oam_session_run_lbm(void *args)
             
             /* Update frame and send on wire */
             oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
-            oam_update_lb_frame(&current_session);
-            int c = libnet_write(l);
+            
+            if (current_session.pcp > 0 || current_session.vlan_id) {
+                eth_ptag = libnet_build_802_1q(
+                    (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
+                    (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
+                    ETHERTYPE_VLAN,                                         /* Tag protocol identifier */
+                    current_session.pcp,                                    /* Priority code point */
+                    current_session.dei,                                    /* Drop eligible indicator(formerly CFI) */
+                    current_session.vlan_id,                                /* VLAN identifier */
+                    ETHERTYPE_OAM,                                          /* Protocol type */
+                    (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
+                    sizeof(lb_frame),                                       /* Payload size */
+                    l,                                                      /* libnet handle */
+                    eth_ptag);                                              /* libnet tag */
+            } else {
+                eth_ptag = libnet_build_ethernet(
+                    (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
+                    (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
+                    ETHERTYPE_OAM,                                          /* Ethernet type */
+                    (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
+                    sizeof(lb_frame),                                       /* Payload size */
+                    l,                                                      /* libnet handle */
+                    eth_ptag);                                              /* libnet tag */
+            }
 
-            if (c == -1) {
+            if (eth_ptag == -1) {
+                pr_error(current_params->log_file, "Can't build LBM frame: %s\n", libnet_geterror(l));
+                current_session.send_next_frame = false;
+                continue;
+            }
+
+            if (libnet_write(l) == -1) {
                 pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
                 current_session.send_next_frame = false;
                 continue;
