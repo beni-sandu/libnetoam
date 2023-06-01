@@ -252,6 +252,9 @@ void pr_log(char *log_file, const char *format, ...)
     char timestamp[100];
     FILE *file = NULL;
 
+    if (log_file == NULL)
+        return;
+
     if (strlen(log_file) == 0)
         return;
     else {
