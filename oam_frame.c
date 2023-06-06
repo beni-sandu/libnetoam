@@ -43,7 +43,7 @@ void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode
 {
     /* MEG level must be in range 0-7 */
     if (meg_level > 7) {
-		pr_debug(NULL, "oam_build_common_header: out of range MEG level, setting to 0.\n");
+		oam_pr_debug(NULL, "oam_build_common_header: out of range MEG level, setting to 0.\n");
 		meg_level = 0;
 	}
 

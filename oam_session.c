@@ -53,11 +53,11 @@ oam_session_id oam_session_start(void *params, enum oam_session_type session_typ
             ret = pthread_create(&session_id, NULL, oam_session_run_lbr, (void *)&new_thread);
             break;
         default:
-            pr_error(NULL, "Invalid OAM session type.\n");
+            oam_pr_error(NULL, "Invalid OAM session type.\n");
     }
 
     if (ret) {
-        pr_error(NULL, "oam_session_start, err: %d\n", ret);
+        oam_pr_error(NULL, "oam_session_start, err: %d\n", ret);
         return -1;
     }
 
@@ -73,7 +73,7 @@ oam_session_id oam_session_start(void *params, enum oam_session_type session_typ
 void oam_session_stop(oam_session_id session_id)
 {
     if (session_id > 0) {
-        pr_debug(NULL, "Stopping OAM session: %ld\n", session_id);
+        oam_pr_debug(NULL, "Stopping OAM session: %ld\n", session_id);
         pthread_cancel(session_id);
         pthread_join(session_id, NULL);
     }

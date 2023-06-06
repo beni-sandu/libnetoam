@@ -42,27 +42,27 @@ extern "C" {
 
 /* Print macros */
 #ifdef DEBUG_ENABLE
-#define pr_debug(file, ...) \
-    ( {printf("[DEBUG] "__VA_ARGS__) ; pr_log(file, "[DEBUG] "__VA_ARGS__);} )
+#define oam_pr_debug(file, ...) \
+    ( {printf("[DEBUG] "__VA_ARGS__) ; oam_pr_log(file, "[DEBUG] "__VA_ARGS__);} )
 #else
-#define pr_debug(...)
+#define oam_pr_debug(...)
 #endif
 
-#define pr_info(file, ...) \
-    ( {printf("[INFO] "__VA_ARGS__) ; pr_log(file, "[INFO] "__VA_ARGS__);} )
+#define oam_pr_info(file, ...) \
+    ( {printf("[INFO] "__VA_ARGS__) ; oam_pr_log(file, "[INFO] "__VA_ARGS__);} )
 
-#define pr_error(file, ...) \
-    ( {fprintf(stderr, "[ERROR] "__VA_ARGS__) ; pr_log(file, "[ERROR] "__VA_ARGS__);})
+#define oam_pr_error(file, ...) \
+    ( {fprintf(stderr, "[ERROR] "__VA_ARGS__) ; oam_pr_log(file, "[ERROR] "__VA_ARGS__);})
 
 /* Library interfaces */
 const char *netoam_lib_version(void);
 oam_session_id oam_session_start(void *params, enum oam_session_type session_type);
 void oam_session_stop(oam_session_id session_id);
-int get_eth_mac(char *if_name, uint8_t *mac_addr);
-int hwaddr_str2bin(char *mac, uint8_t *addr);
-bool is_eth_vlan(char *if_name);
-bool is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf);
-void pr_log(char *log_file, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
+int oam_get_eth_mac(char *if_name, uint8_t *mac_addr);
+int oam_hwaddr_str2bin(char *mac, uint8_t *addr);
+bool oam_is_eth_vlan(char *if_name);
+bool oam_is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf);
+void oam_pr_log(char *log_file, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 
 #ifdef __cplusplus
 }

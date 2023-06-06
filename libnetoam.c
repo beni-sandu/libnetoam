@@ -45,9 +45,9 @@
 #define VLAN_VALID(hdr, hv)   ((hv)->tp_vlan_tci != 0 || ((hdr)->tp_status & TP_STATUS_VLAN_VALID))
 
 /* Prototypes */
-int hex2bin(char ch);
+static int hex2bin(char ch);
 
-int hex2bin(char ch)
+static int hex2bin(char ch)
 {
 	if ((ch >= '0') && (ch <= '9'))
 		return ch - '0';
@@ -57,7 +57,7 @@ int hex2bin(char ch)
 	return EXIT_FAILURE;
 }
 
-int hwaddr_str2bin(char *mac, uint8_t *addr)
+int oam_hwaddr_str2bin(char *mac, uint8_t *addr)
 {
 	int i;
 
@@ -78,14 +78,14 @@ int hwaddr_str2bin(char *mac, uint8_t *addr)
 	return EXIT_SUCCESS;
 }
 
-int get_eth_mac(char *if_name, uint8_t *mac_addr)
+int oam_get_eth_mac(char *if_name, uint8_t *mac_addr)
 {
     struct ifaddrs *addrs, *ifp;
     struct sockaddr_ll *sa;
 
     /* Get a list of network interfaces on the system */
     if (getifaddrs(&addrs) == -1) {
-        pr_error(NULL, "getifaddrs.\n");
+        oam_pr_error(NULL, "getifaddrs.\n");
         return EXIT_FAILURE;
     }
 
@@ -114,7 +114,7 @@ int get_eth_mac(char *if_name, uint8_t *mac_addr)
 }
 
 /* All this code just to find out if an interface is a VLAN, WHY GOD */
-bool is_eth_vlan(char *if_name)
+bool oam_is_eth_vlan(char *if_name)
 {
 #define RECV_BUFSIZE (4096)
 
@@ -144,13 +144,13 @@ bool is_eth_vlan(char *if_name)
     /* Create a netlink route socket */
     int sfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sfd < 0) {
-        pr_error(NULL, "Cannot create NL socket.\n");
+        oam_pr_error(NULL, "Cannot create NL socket.\n");
         return false;
     }
 
     /* Send the request to kernel */
     if (sendmsg(sfd, &msg, 0) < 0) {
-        pr_error(NULL, "sendmsg.\n");
+        oam_pr_error(NULL, "sendmsg.\n");
         return false;
     }
 
@@ -163,7 +163,7 @@ bool is_eth_vlan(char *if_name)
     while (1) {
         int len = recvmsg(sfd, &msg, 0);
         if (len < 0) {
-            pr_error(NULL, "recvmsg.\n");
+            oam_pr_error(NULL, "recvmsg.\n");
             return false;
         }
 
@@ -223,7 +223,7 @@ bool is_eth_vlan(char *if_name)
 }
 
 /* Check if ETH frame has a 802.1q header. If it does, copy the auxdata in buffer provided by second parameter */
-bool is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf)
+bool oam_is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf)
 {
     for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(recv_msg); cmsg != NULL; cmsg = CMSG_NXTHDR(recv_msg, cmsg)) {
         if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct tpacket_auxdata)) ||
@@ -244,7 +244,7 @@ bool is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf)
     return false;
 }
 
-void pr_log(char *log_file, const char *format, ...)
+void oam_pr_log(char *log_file, const char *format, ...)
 {
     va_list arg;
     time_t now;
