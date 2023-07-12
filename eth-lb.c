@@ -134,6 +134,8 @@ void *oam_session_run_lbm(void *args)
     current_session.meg_level = current_params->meg_level;
     current_session.custom_vlan = false;
     current_session.current_params = current_params;
+    current_session.l = NULL;
+    current_session.sockfd = 0;
 
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
@@ -618,6 +620,8 @@ void *oam_session_run_lbr(void *args)
      };
 
     current_session.meg_level = current_params->meg_level;
+    current_session.l = NULL;
+    current_session.sockfd = 0;
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
