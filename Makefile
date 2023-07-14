@@ -50,6 +50,9 @@ libs:
 
 install:
 	$(Q)mkdir -p $(PREFIX)/include/libnetoam
+	$(Q)if [ ! -d $(PREFIX)/lib ] ; then \
+			mkdir -p $(PREFIX)/lib ; \
+		fi
 	$(Q)cp -d $(OUTDIR)/libnetoam.so* $(PREFIX)/lib
 	$(Q)cp *.h $(PREFIX)/include/libnetoam
 	$(Q)ln -sf $(PREFIX)/lib/libnetoam.so.$(VERSION) $(PREFIX)/lib/libnetoam.so
