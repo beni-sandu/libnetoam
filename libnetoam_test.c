@@ -11,15 +11,12 @@ void lbm_callback(struct cb_status *status) {
     
     switch(status->cb_ret) {
         case OAM_LB_CB_MISSED_PING_THRESH:
-            printf("[%s] Consecutive missed ping threshold reached.\n",
-                            status->session_params->if_name);
-            pr_log(status->session_params->log_file, "[%s] Consecutive missed ping threshold reached.\n",
+            oam_pr_info(status->session_params->log_file, "[%s] Consecutive missed ping threshold reached.\n",
                             status->session_params->if_name);
             break;
         
         case OAM_LB_CB_RECOVER_PING_THRESH:
-            printf("[%s] Recovery threshold reached.\n", status->session_params->if_name);
-            pr_log(status->session_params->log_file, "[%s] Recovery threshold reached.\n", status->session_params->if_name);
+            oam_pr_info(status->session_params->log_file, "[%s] Recovery threshold reached.\n", status->session_params->if_name);
             break;
     }
 }
@@ -39,7 +36,7 @@ int main(void)
     };
     
     printf("Running with: %s\n", netoam_lib_version());
-    pr_debug("NOTE: You are running a debug build.\n");
+    oam_pr_debug(NULL, "NOTE: You are running a debug build.\n");
 
     s1_lbm = oam_session_start(&s1_params, OAM_SESSION_LBM);
 
