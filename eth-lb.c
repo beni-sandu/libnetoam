@@ -40,7 +40,7 @@
 /* Forward declarations */
 static void lbm_timeout_handler(union sigval sv);
 static void lb_session_cleanup(void *args);
-static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, int timeout_ms);
+static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms);
 void *oam_session_run_lbr(void *args);
 void *oam_session_run_lbm(void *args);
 
@@ -64,7 +64,7 @@ static __thread int ns_fd;
 static __thread char ns_buf[MAX_PATH] = "/run/netns/";
 static __thread struct tpacket_auxdata recv_auxdata;
 
-static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, int timeout_ms)
+static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms)
 {
     struct pollfd fds[1];
     struct timespec ts;
@@ -80,15 +80,14 @@ static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, int timeout_ms
 
     if (ret == -1) {
         oam_pr_error(NULL, "ppoll call error.\n"); //error in ppoll call
-    }
-    else if (ret == 0) {
+        return -1;
+    } else if (ret == 0) {
         return -2; //timeout expired
-    }
-    else
+    } else
         if (fds[0].revents & POLLIN)
             return recvmsg(sockfd, recv_hdr, 0);
 
-    return EXIT_FAILURE;
+    return -1;
 }
 
 /* Entry point of a new OAM LBM session */
