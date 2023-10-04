@@ -113,8 +113,8 @@ int oam_get_eth_mac(char *if_name, uint8_t *mac_addr)
     return EXIT_FAILURE;
 }
 
-/* All this code just to find out if an interface is a VLAN, WHY GOD */
-bool oam_is_eth_vlan(char *if_name)
+/* Returns 0 if interface is VLAN, 1 if not and -1 on error */
+int oam_is_eth_vlan(char *if_name)
 {
 #define RECV_BUFSIZE (4096)
 
@@ -145,13 +145,13 @@ bool oam_is_eth_vlan(char *if_name)
     int sfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sfd < 0) {
         oam_pr_error(NULL, "Cannot create NL socket.\n");
-        return false;
+        return -1;
     }
 
     /* Send the request to kernel */
     if (sendmsg(sfd, &msg, 0) < 0) {
-        oam_pr_error(NULL, "sendmsg.\n");
-        return false;
+        oam_pr_error(NULL, "Error sending NL request to kernel.\n");
+        return -1;
     }
 
     /* Swap header payload */
@@ -163,8 +163,8 @@ bool oam_is_eth_vlan(char *if_name)
     while (1) {
         int len = recvmsg(sfd, &msg, 0);
         if (len < 0) {
-            oam_pr_error(NULL, "recvmsg.\n");
-            return false;
+            oam_pr_error(NULL, "Error reading NL reply from kernel.\n");
+            return -1;
         }
 
         /* Look through the message */
@@ -174,12 +174,16 @@ bool oam_is_eth_vlan(char *if_name)
             struct rtattr *rta;
 
             /* End of multipart message, interface not found */
-            if (nh->nlmsg_type == NLMSG_DONE)
-                return false;
+            if (nh->nlmsg_type == NLMSG_DONE) {
+                oam_pr_error(NULL, "Interface not found for NL reply.\n");
+                return -1;
+            }
 
             /* Error reading message */
-            if (nh->nlmsg_type ==  NLMSG_ERROR)
-                return false;
+            if (nh->nlmsg_type ==  NLMSG_ERROR) {
+                oam_pr_error(NULL, "Error reading NL message from kernel.\n");
+                return -1;
+            }
 
             /* Skip non ETH interfaces */
             ifi = (struct ifinfomsg *)NLMSG_DATA(nh);
@@ -209,14 +213,14 @@ bool oam_is_eth_vlan(char *if_name)
                                 
                                 /* Is it a VLAN? */
                                 if (!strcmp(((char *)RTA_DATA(rtk)), "vlan"))
-                                    return true;
+                                    return 0;
                             }
                         }
                         
                     }
                 }
 
-                return false;
+                return 1;
             }
         }
     }

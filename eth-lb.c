@@ -104,6 +104,7 @@ void *oam_session_run_lbm(void *args)
     struct ether_header *eh;
     struct oam_lb_pdu *lbm_frame_p;
     int flag_enable = 1;
+    int ret = 0;
 
     /* Setup buffer and header structs for received packets */
     uint8_t recv_buf[8192];
@@ -266,10 +267,16 @@ void *oam_session_run_lbm(void *args)
     /* Build oam common header for LMB frames */
     oam_build_common_header(current_session.meg_level, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
 
-    /* Build Ethernet header */
+    /* Check if interface is a VLAN */
+    ret = oam_is_eth_vlan(current_params->if_name);
+    if (ret == -1) {
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
 
     /* If session is started on a VLAN, we ignore VLAN parameters, otherwise it will get double tagged */
-    if (oam_is_eth_vlan(current_params->if_name) == false) {
+    if (ret == 1) {
 
         /* If we a have priority code point or VLAN ID, we need to add a 802.1q header, even if VLAN ID is 0. */
         if (current_params->pcp > 0 || current_params->vlan_id > 0) {
@@ -283,6 +290,7 @@ void *oam_session_run_lbm(void *args)
             current_session.dei = current_params->dei;
             current_session.custom_vlan = true;
 
+            /* Build Ethernet header */
             eth_ptag = libnet_build_802_1q(
                 (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
                 (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
