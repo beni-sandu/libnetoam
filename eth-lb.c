@@ -328,7 +328,7 @@ void *oam_session_run_lbm(void *args)
     tx_ts.it_value.tv_nsec = current_session.interval_ms % 1000 * 1000000;
 
     /* Create TX timer */
-    if (timer_create(CLOCK_REALTIME, &tx_sev, &(tx_timer.timer_id)) == -1) {
+    if (timer_create(CLOCK_MONOTONIC, &tx_sev, &(tx_timer.timer_id)) == -1) {
         oam_pr_error(current_params->log_file, "Cannot create timer.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -487,7 +487,7 @@ void *oam_session_run_lbm(void *args)
                 }
 
                 /* Get aprox timestamp of sent frame */
-                clock_gettime(CLOCK_REALTIME, &(current_session.time_sent));
+                clock_gettime(CLOCK_MONOTONIC, &(current_session.time_sent));
                 oam_pr_debug(current_params->log_file, "[%s] Sent LBM with trans_id: %d\n", current_params->if_name, current_session.transaction_id);
 
                 current_session.send_next_frame = false;
@@ -502,7 +502,7 @@ void *oam_session_run_lbm(void *args)
             if (recvmsg_ppoll(sockfd, &recv_hdr, current_session.interval_ms) > 0) {
 
                 /* Get aprox timestamp of received frame */
-                clock_gettime(CLOCK_REALTIME, &current_session.time_received);
+                clock_gettime(CLOCK_MONOTONIC, &current_session.time_received);
 
                 /* Get ETH header */
                 eh = (struct ether_header *)recv_buf;
