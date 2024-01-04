@@ -3,6 +3,7 @@ STRICT_COMPILE = 1
 CFLAGS = -Wall
 LDFLAGS = -lpthread -lrt -lcap -lnet
 OUTDIR = build
+TESTDIR = tests
 SRCDIR = library
 INCLDIR = include
 
@@ -39,6 +40,9 @@ ifeq ($(PREFIX),)
     PREFIX := /usr/local
 endif
 
+# Pass on vars to submakes
+export
+
 libs:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
 	$(Q)mkdir $(OUTDIR)
@@ -59,5 +63,13 @@ uninstall:
 	$(Q)rm -rf $(PREFIX)/include/libnetoam 2> /dev/null ||:
 	$(Q)rm -rf $(PREFIX)/lib/libnetoam.so* 2> /dev/null ||:
 
+test:
+	$(Q)$(MAKE) -C $(TESTDIR) bins
+
+test-run: test
+	$(Q)cd $(TESTDIR) ; \
+	sudo ./run.sh
+
 clean:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
+	$(Q)$(MAKE) -C $(TESTDIR) clean
