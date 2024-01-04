@@ -35,7 +35,7 @@ extern "C" {
 #include <linux/if_packet.h>
 
 #include "oam_session.h"
-#include "eth-lb.h"
+#include "eth_lb.h"
 
 /* Library version */
 #define LIBNETOAM_VERSION "0.1"

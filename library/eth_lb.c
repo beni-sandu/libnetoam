@@ -604,7 +604,6 @@ void *oam_session_run_lbr(void *args)
     int if_index;
     struct ether_header *eh;
     struct oam_lb_pdu *lbr_frame_p;
-    int c;
     struct oam_lb_session current_session;
     const uint8_t eth_broadcast[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
@@ -828,9 +827,7 @@ void *oam_session_run_lbr(void *args)
             }
 
             /* Send frame on wire */
-            c = libnet_write(l);
-
-            if (c == -1) {
+            if (libnet_write(l) == -1) {
                 oam_pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
                 continue;
             }

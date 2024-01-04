@@ -46,8 +46,8 @@ export
 libs:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
 	$(Q)mkdir $(OUTDIR)
-	$(Q)$(CC) -c $(CFLAGS) -fpic $(SRCDIR)/libnetoam.c $(SRCDIR)/oam_session.c $(SRCDIR)/oam_frame.c $(SRCDIR)/eth-lb.c
-	$(Q)$(CC) -shared -Wl,-soname,libnetoam.so.$(VERSION) -o $(OUTDIR)/libnetoam.so.$(VERSION) libnetoam.o oam_session.o oam_frame.o eth-lb.o $(LDFLAGS)
+	$(Q)$(CC) -c $(CFLAGS) -fpic $(SRCDIR)/libnetoam.c $(SRCDIR)/oam_session.c $(SRCDIR)/oam_frame.c $(SRCDIR)/eth_lb.c
+	$(Q)$(CC) -shared -Wl,-soname,libnetoam.so.$(VERSION) -o $(OUTDIR)/libnetoam.so.$(VERSION) libnetoam.o oam_session.o oam_frame.o eth_lb.o $(LDFLAGS)
 	$(Q)rm *.o
 
 install:

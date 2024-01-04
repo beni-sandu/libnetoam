@@ -33,7 +33,7 @@
 #include <pthread.h>
 
 #include "oam_session.h"
-#include "eth-lb.h"
+#include "eth_lb.h"
 #include "libnetoam.h"
 
 /*

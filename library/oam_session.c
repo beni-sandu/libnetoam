@@ -27,7 +27,7 @@
 #include <pthread.h>
 
 #include "../include/oam_session.h"
-#include "../include/eth-lb.h"
+#include "../include/eth_lb.h"
 #include "../include/libnetoam.h"
 
 /* 
