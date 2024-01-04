@@ -24,57 +24,32 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <arpa/inet.h>
 
-#include "oam_session.h"
-#include "eth-lb.h"
-#include "libnetoam.h"
+#include "../include/oam_frame.h"
+#include "../include/libnetoam.h"
 
-/* 
- * Create a new OAM session, returns a session id
- * on successful creation, -1 otherwise
- */
-oam_session_id oam_session_start(void *params, enum oam_session_type session_type)
+void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame)
 {    
-    pthread_t session_id;
-    int ret = 0;
-    struct oam_session_thread new_thread;
-
-    new_thread.session_params = params;
-    new_thread.ret = 0;
-
-    sem_init(&new_thread.sem, 0, 0);
-
-    switch (session_type) {
-        case OAM_SESSION_LBM:
-            ret = pthread_create(&session_id, NULL, oam_session_run_lbm, (void *)&new_thread);
-            break;
-        case OAM_SESSION_LBR:
-            ret = pthread_create(&session_id, NULL, oam_session_run_lbr, (void *)&new_thread);
-            break;
-        default:
-            oam_pr_error(NULL, "Invalid OAM session type.\n");
-    }
-
-    if (ret) {
-        oam_pr_error(NULL, "oam_session_start, err: %d\n", ret);
-        return -1;
-    }
-
-    sem_wait(&new_thread.sem);
-
-    if (new_thread.ret != 0)
-        return new_thread.ret;
-    
-    return session_id;
+    /* At this point, the common header should be already filled in, so we only add the rest of the LB frame */
+    oam_frame->transaction_id = htonl(transaction_id);
+    oam_frame->end_tlv = end_tlv;
 }
 
-/* Stop a OAM session */
-void oam_session_stop(oam_session_id session_id)
+void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
+        uint8_t tlv_offset, struct oam_common_header *header)
 {
-    if (session_id > 0) {
-        oam_pr_debug(NULL, "Stopping OAM session: %ld\n", session_id);
-        pthread_cancel(session_id);
-        pthread_join(session_id, NULL);
-    }
+    /* MEG level must be in range 0-7 */
+    if (meg_level > 7) {
+		oam_pr_debug(NULL, "oam_build_common_header: out of range MEG level, setting to 0.\n");
+		meg_level = 0;
+	}
+
+    header->byte1.version = version;
+    header->byte1.meg_level = (meg_level << 5) & 0xe0;
+    header->opcode = opcode;
+    header->flags = flags;
+    header->tlv_offset = tlv_offset;
 }

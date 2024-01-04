@@ -40,7 +40,7 @@
 #include <net/if_arp.h>
 #include <stdarg.h>
 
-#include "libnetoam.h"
+#include "../include/libnetoam.h"
 
 #define VLAN_VALID(hdr, hv)   ((hv)->tp_vlan_tci != 0 || ((hdr)->tp_status & TP_STATUS_VLAN_VALID))
 

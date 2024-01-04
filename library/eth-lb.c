@@ -33,9 +33,9 @@
 #include <linux/if_packet.h>
 #include <poll.h>
 
-#include "oam_session.h"
-#include "oam_frame.h"
-#include "libnetoam.h"
+#include "../include/oam_session.h"
+#include "../include/oam_frame.h"
+#include "../include/libnetoam.h"
 
 /* Forward declarations */
 static void lbm_timeout_handler(union sigval sv);

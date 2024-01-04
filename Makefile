@@ -3,6 +3,8 @@ STRICT_COMPILE = 1
 CFLAGS = -Wall
 LDFLAGS = -lpthread -lrt -lcap -lnet
 OUTDIR = build
+SRCDIR = library
+INCLDIR = include
 
 # Use VERBOSE=1 to echo all Makefile commands when running
 VERBOSE ?= 0
@@ -25,11 +27,7 @@ CFLAGS += -Wbad-function-cast -Wformat-nonliteral -Wsuggest-attribute=format -Wi
 CFLAGS += -std=gnu99
 endif
 
-TEST_BIN = oam_test
-
-VERSION = $(shell grep LIBNETOAM_VERSION libnetoam.h | cut -d " " -f 3)
-
-oam_test_FILES = libnetoam_test.c
+VERSION = $(shell grep LIBNETOAM_VERSION $(INCLDIR)/libnetoam.h | cut -d " " -f 3)
 
 # Use SDK environment if available
 CC = $(shell echo $$CC)
@@ -44,7 +42,7 @@ endif
 libs:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
 	$(Q)mkdir $(OUTDIR)
-	$(Q)$(CC) -c $(CFLAGS) -fpic libnetoam.c oam_session.c oam_frame.c eth-lb.c
+	$(Q)$(CC) -c $(CFLAGS) -fpic $(SRCDIR)/libnetoam.c $(SRCDIR)/oam_session.c $(SRCDIR)/oam_frame.c $(SRCDIR)/eth-lb.c
 	$(Q)$(CC) -shared -Wl,-soname,libnetoam.so.$(VERSION) -o $(OUTDIR)/libnetoam.so.$(VERSION) libnetoam.o oam_session.o oam_frame.o eth-lb.o $(LDFLAGS)
 	$(Q)rm *.o
 
@@ -54,15 +52,12 @@ install:
 			mkdir -p $(PREFIX)/lib ; \
 		fi
 	$(Q)cp -d $(OUTDIR)/libnetoam.so* $(PREFIX)/lib
-	$(Q)cp *.h $(PREFIX)/include/libnetoam
+	$(Q)cp $(INCLDIR)/*.h $(PREFIX)/include/libnetoam
 	$(Q)ln -sf $(PREFIX)/lib/libnetoam.so.$(VERSION) $(PREFIX)/lib/libnetoam.so
 
 uninstall:
 	$(Q)rm -rf $(PREFIX)/include/libnetoam 2> /dev/null ||:
 	$(Q)rm -rf $(PREFIX)/lib/libnetoam.so* 2> /dev/null ||:
-
-test:
-	$(Q)$(CC) $(CFLAGS) $(oam_test_FILES) -o $(TEST_BIN) -lnetoam
 
 clean:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
