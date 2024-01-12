@@ -8,6 +8,7 @@
 
 #include "../include/oam_session.h"
 #include "../include/eth_lb.h"
+#include "../include/eth_lt.h"
 #include "../include/libnetoam.h"
 
 /* 
@@ -31,6 +32,12 @@ oam_session_id oam_session_start(void *params, enum oam_session_type session_typ
             break;
         case OAM_SESSION_LBR:
             ret = pthread_create(&session_id, NULL, oam_session_run_lbr, (void *)&new_thread);
+            break;
+        case OAM_SESSION_LTM:
+            ret = pthread_create(&session_id, NULL, oam_session_run_ltm, (void *)&new_thread);
+            break;
+        case OAM_SESSION_LTR:
+            ret = pthread_create(&session_id, NULL, oam_session_run_ltr, (void *)&new_thread);
             break;
         default:
             oam_pr_error(NULL, "Invalid OAM session type.\n");

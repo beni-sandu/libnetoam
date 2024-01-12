@@ -10,10 +10,7 @@
 #include <stdbool.h>
 #include <libnet.h>
 
-#define IF_NAME_SIZE 32
-#define NET_NS_SIZE 32
-#define MAX_PATH 512
-#define ETH_STR_LEN 18
+#include "oam_session.h"
 
 struct oam_lb_session_params {
     char if_name[IF_NAME_SIZE];                                 /* Network interface name */
