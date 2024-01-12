@@ -106,6 +106,18 @@ struct oam_lb_pdu {
 	uint8_t end_tlv;
 } __attribute__((__packed__));
 
+/*
+ * ETH-LTM PDU
+ */
+struct oam_ltm_pdu {
+	struct oam_common_header oam_header;
+	uint32_t transaction_id;
+	uint8_t ttl;
+	uint8_t origin_mac[ETH_ALEN];
+	uint8_t target_mac[ETH_ALEN];
+	uint8_t end_tlv;
+} __attribute__((__packed__));
+
 /* Prototypes */
 void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
 		uint8_t tlv_offset, struct oam_common_header *header);
