@@ -102,5 +102,7 @@ struct oam_ltm_pdu {
 void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
 		uint8_t tlv_offset, struct oam_common_header *header);
 void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame);
+void oam_build_ltm_frame(uint32_t transaction_id, uint8_t ttl, uint8_t *origin_mac, uint8_t *target_mac,
+        uint8_t end_tlv, struct oam_ltm_pdu *oam_ltm_frame);
 
 #endif //_OAM_FRAME_H

@@ -16,6 +16,7 @@ extern "C" {
 
 #include "oam_session.h"
 #include "eth_lb.h"
+#include "eth_lt.h"
 
 /* Library version */
 #define LIBNETOAM_VERSION "0.1"

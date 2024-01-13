@@ -18,6 +18,16 @@ void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_
     oam_frame->end_tlv = end_tlv;
 }
 
+void oam_build_ltm_frame(uint32_t transaction_id, uint8_t ttl, uint8_t *origin_mac, uint8_t *target_mac,
+        uint8_t end_tlv, struct oam_ltm_pdu *oam_ltm_frame)
+{
+    oam_ltm_frame->transaction_id = htonl(transaction_id);
+    oam_ltm_frame->ttl = ttl;
+    memcpy(oam_ltm_frame->origin_mac, origin_mac, ETH_ALEN);
+    memcpy(oam_ltm_frame->target_mac, target_mac, ETH_ALEN);
+    oam_ltm_frame->end_tlv = end_tlv;
+}
+
 void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
         uint8_t tlv_offset, struct oam_common_header *header)
 {
