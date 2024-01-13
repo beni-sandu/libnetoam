@@ -125,8 +125,6 @@ void *oam_session_run_lbm(void *args)
 
     /* Initialize some session and timer data */
     current_session.lbm_tx_timer = &tx_timer;
-    current_session.frame = &lb_frame;
-    current_session.eth_ptag = &eth_ptag;
     current_session.is_session_configured = false;
     current_session.send_next_frame = true;
     current_session.interval_ms = current_params->interval_ms;

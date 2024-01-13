@@ -60,8 +60,6 @@ struct oam_lb_session {
     struct timespec time_sent;
     struct timespec time_received;
     bool is_session_configured;
-    struct oam_lb_pdu *frame;                                   /* Pointer to lbm frame */
-    libnet_ptag_t *eth_ptag;                                    /* Pointer to libnet ETH tag */
     libnet_t *l;                                                /* libnet context */
     struct oam_lbm_timer *lbm_tx_timer;                         /* Pointer to LBM tx timer */
     uint16_t vlan_id;                                           /* VLAN identifier */
