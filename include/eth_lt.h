@@ -35,6 +35,15 @@ struct oam_lt_session {
     uint8_t meg_level;
     struct oam_ltm_session_params *current_params;
     uint8_t ttl;
+    struct oam_ltm_timer *tx_timer_p;                         /* Pointer to LTM TX timer */
+    int rx_sockfd;
+    volatile bool send_next_frame;
+};
+
+struct oam_ltm_timer {
+    bool is_timer_created;
+    timer_t timer_id;                                           /* POSIX interval timer id */
+    struct itimerspec *ts;
 };
 
 void *oam_session_run_ltm(void *args);
