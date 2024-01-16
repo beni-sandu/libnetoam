@@ -28,6 +28,19 @@ void oam_build_ltm_frame(uint32_t transaction_id, uint8_t ttl, uint8_t *origin_m
     oam_ltm_frame->end_tlv = end_tlv;
 }
 
+void oam_build_ltr_frame(uint32_t transaction_id, uint8_t ttl, uint8_t relay_action, struct ltr_egress_id_tlv *egress_id,
+        struct reply_ingress_tlv *reply_ingress, struct reply_egress_tlv *reply_egress, uint8_t end_tlv,
+        struct oam_ltr_pdu *oam_ltr_frame)
+{
+    oam_ltr_frame->transaction_id = htonl(transaction_id);
+    oam_ltr_frame->ttl = ttl;
+    oam_ltr_frame->relay_action = relay_action;
+    memcpy(&oam_ltr_frame->egress_id, egress_id, sizeof(struct ltr_egress_id_tlv));
+    memcpy(&oam_ltr_frame->reply_ingress, reply_ingress, sizeof(struct reply_ingress_tlv));
+    memcpy(&oam_ltr_frame->reply_egress, reply_egress, sizeof(struct reply_egress_tlv));
+    oam_ltr_frame->end_tlv = end_tlv;
+}
+
 void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
         uint8_t tlv_offset, struct oam_common_header *header)
 {

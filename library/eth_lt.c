@@ -4,6 +4,16 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+/*
+ * MEP - MEG End Point (A point marking the end of an ETH MEG that is capable of initiating
+ * and terminating OAM frames for fault management and performance monitoring. A MEP does not
+ * add a new forwarding identifier to the transit ETH flows. A MEP does not terminate the transit
+ * ETH flows, though it can observe these flows (e.g., count frames).)
+ * 
+ * MIP - MEG Intermediate Point ( An intermediate point in a MEG that is capable of reacting to some OAM frames.
+ * A MIP does not initiate OAM frames. A MIP takes no action on the transit ETH flows.)
+ */
+
 #define _GNU_SOURCE
 
 #include <pthread.h>
@@ -95,7 +105,7 @@ void *oam_session_run_ltm(void *args)
     srandom((uint64_t)current_params);
     current_session.transaction_id = random();
 
-    /* Build oam common header for LTM frames (TODO: check HWOnly bit) */
+    /* Build OAM common header for LTM frame (TODO: check HWOnly bit) */
     oam_build_common_header(current_session.meg_level, 0, OAM_OP_LTM, 0, 17, &ltm_tx_frame.oam_header);
 
     /* Build LTM frame */
@@ -197,12 +207,6 @@ void *oam_session_run_ltm(void *args)
         } // if (current_session.send_next_frame == true)
     } // while (true)
 
-    /* Send 1 LTM frame on wire */
-    if (libnet_write(l) == -1) {
-        oam_pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
-        pthread_exit(NULL);
-    }
-
     pthread_cleanup_pop(0);
 
     return NULL;
@@ -210,6 +214,96 @@ void *oam_session_run_ltm(void *args)
 
 void *oam_session_run_ltr(void *args)
 {
+    struct oam_session_thread *current_thread = (struct oam_session_thread *)args;
+    struct oam_ltr_session_params *current_params = current_thread->session_params;
+    uint8_t src_hwaddr[ETH_ALEN];
+    struct oam_ltr_pdu ltr_tx_frame;
+    struct oam_ltr_pdu *ltr_frame_p;
+    struct oam_lt_session current_session;
+    const uint8_t eth_bcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
+    /* Initialize session data */
+    current_session.l = NULL;
+    current_session.current_params = current_params;
+    current_session.ttl = current_params->ttl;
+    current_session.meg_level = current_params->meg_level;
+    current_session.is_session_configured = false;
+    current_session.rx_sockfd = 0;
+
+    /* Install session cleanup handler */
+    pthread_cleanup_push(ltm_session_cleanup, (void *)&current_session);
+
+    l = libnet_init(
+        LIBNET_LINK,                                /* injection type */
+        current_params->if_name,                    /* network interface */
+        libnet_errbuf);                             /* error buffer */
+
+    if (l == NULL) {
+        oam_pr_error(current_params->log_file, "libnet_init() failed: %s\n", libnet_errbuf);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Save libnet context */
+    current_session.l = l;
+
+    /* Get source MAC address */
+    if (oam_get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
+        oam_pr_error(current_params->log_file, "Error getting MAC address of local interface.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Seed random generator used for transaction id */
+    srandom((uint64_t)current_params);
+    current_session.transaction_id = random();
+
+    /* Build OAM common header for LTR frame */
+    oam_build_common_header(current_session.meg_level, 0, OAM_OP_LTR, 0, 6, &ltr_tx_frame.oam_header);
+
+    /* Build LTR frame */
+    struct ltr_egress_id_tlv egress_id;
+    memset(&egress_id, 0, sizeof(egress_id));
+
+    struct reply_ingress_tlv reply_ingress;
+    memset(&reply_ingress, 0, sizeof(reply_ingress));
+    
+    struct reply_egress_tlv reply_egress;
+    memset(&reply_egress, 0, sizeof(reply_egress));
+
+    oam_build_ltr_frame(current_session.transaction_id, current_session.ttl, 0, &egress_id,
+        &reply_ingress, &reply_egress, 0, &ltr_tx_frame);
+
+    /* Build Ethernet header */
+    eth_ptag = libnet_build_ethernet(
+                eth_bcast_addr,                                         /* Destination MAC */
+                (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
+                ETHERTYPE_OAM,                                          /* Ethernet type */
+                (uint8_t *)&ltr_tx_frame,                               /* Payload (LTM frame filled above) */
+                sizeof(ltr_tx_frame),                                   /* Payload size */
+                l,                                                      /* libnet context */
+                eth_ptag);                                              /* libnet eth tag */
+    
+    if (eth_ptag == -1) {
+        oam_pr_error(current_params->log_file, "Can't build LTR frame: %s\n", libnet_geterror(l));
+        pthread_exit(NULL);
+    }
+
+    /* Session configuration successful, return a valid session ID */
+    current_session.is_session_configured = true;
+    oam_pr_debug(current_params->log_file, "LTR session configured successfully.\n");
+    sem_post(&current_thread->sem);
+
+    /* Send 1 LTR frame on wire */
+    if (libnet_write(l) == -1) {
+        oam_pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
+        pthread_exit(NULL);
+    }
+
+    pthread_cleanup_pop(0);
+
     return NULL;
 }
 
