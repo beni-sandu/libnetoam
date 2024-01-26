@@ -36,7 +36,7 @@ struct oam_ltr_session_params {
     char log_file[MAX_PATH];                                    /* Path to log file */
 };
 
-struct oam_lt_session {
+struct oam_ltm_session {
     uint8_t *src_mac;
     uint8_t *dst_mac;
     uint32_t transaction_id;
@@ -50,6 +50,18 @@ struct oam_lt_session {
     struct oam_ltm_timer *tx_timer_p;                         /* Pointer to LTM TX timer */
     int rx_sockfd;
     volatile bool send_next_frame;
+};
+
+struct oam_ltr_session {
+    uint8_t *src_mac;
+    uint8_t *dst_mac;
+    bool is_session_configured;
+    libnet_t *ingress_l;                                        /* libnet context for ingress interface */
+    uint16_t vlan_id;                                           /* VLAN identifier */
+    uint8_t pcp;                                                /* Frame priority level */
+    uint8_t meg_level;
+    struct oam_ltr_session_params *current_params;
+    int rx_sockfd;
 };
 
 struct oam_ltm_timer {

@@ -30,6 +30,7 @@ void *oam_session_run_ltm(void *args);
 void *oam_session_run_ltr(void *args);
 static void ltm_timeout_handler(union sigval sv);
 static void ltm_session_cleanup(void *args);
+static void ltr_session_cleanup(void *args);
 
 /* Per thread variables */
 static __thread libnet_t *l;
@@ -49,7 +50,7 @@ void *oam_session_run_ltm(void *args)
     uint8_t dst_hwaddr[ETH_ALEN];
     struct oam_ltm_pdu ltm_tx_frame;
     struct oam_ltm_pdu *ltm_frame_p;
-    struct oam_lt_session current_session;
+    struct oam_ltm_session current_session;
     const uint8_t eth_bcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     struct itimerspec tx_ts;
     struct sigevent tx_sev;
@@ -219,75 +220,77 @@ void *oam_session_run_ltr(void *args)
     uint8_t src_hwaddr[ETH_ALEN];
     struct oam_ltr_pdu ltr_tx_frame;
     struct oam_ltr_pdu *ltr_frame_p;
-    struct oam_lt_session current_session;
+    struct oam_ltr_session current_session;
     const uint8_t eth_bcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    int flag_enable = 1;
+    int rx_if_index;
+    struct sockaddr_ll rx_sll;
+    ssize_t rx_bytes;
+
+    /* Setup buffer and header structs for received frames */
+    uint8_t recv_buf[8192];
+	struct iovec recv_iov = {
+          .iov_base = recv_buf,
+          .iov_len = 8192,
+    };
+
+	union {
+          struct cmsghdr cmsg;
+          char buf[CMSG_SPACE(sizeof(struct tpacket_auxdata))];
+	} cmsg_buf;
+	struct msghdr recv_hdr = {
+          .msg_iov = &recv_iov,
+          .msg_iovlen = 1,
+          .msg_control = &cmsg_buf,
+          .msg_controllen = sizeof(cmsg_buf)
+     };
 
     /* Initialize session data */
-    current_session.l = NULL;
+    current_session.ingress_l = NULL;
     current_session.current_params = current_params;
-    current_session.ttl = current_params->ttl;
     current_session.meg_level = current_params->meg_level;
     current_session.is_session_configured = false;
     current_session.rx_sockfd = 0;
 
     /* Install session cleanup handler */
-    pthread_cleanup_push(ltm_session_cleanup, (void *)&current_session);
+    pthread_cleanup_push(ltr_session_cleanup, (void *)&current_session);
 
-    l = libnet_init(
-        LIBNET_LINK,                                /* injection type */
-        current_params->if_name,                    /* network interface */
-        libnet_errbuf);                             /* error buffer */
-
-    if (l == NULL) {
-        oam_pr_error(current_params->log_file, "libnet_init() failed: %s\n", libnet_errbuf);
+    /* Create one RX socket which is used to listen for LTM PDUs. */
+    if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
+        oam_pr_error(current_params->log_file, "Cannot create RX socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
-    /* Save libnet context */
-    current_session.l = l;
-
-    /* Get source MAC address */
-    if (oam_get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
-        oam_pr_error(current_params->log_file, "Error getting MAC address of local interface.\n");
+    /* We will probably need packet auxdata (TODO: remove if not needed) */
+    if (setsockopt(current_session.rx_sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
+        oam_pr_error(current_params->log_file, "Can't enable packet auxdata.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
-    /* Seed random generator used for transaction id */
-    srandom((uint64_t)current_params);
-    current_session.transaction_id = random();
+    /* Get interface index */
+    rx_if_index = if_nametoindex(current_params->if_name);
+    if (rx_if_index == 0) {
+        oam_pr_error(current_params->log_file, "Error getting RX interface index.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
 
-    /* Build OAM common header for LTR frame */
-    oam_build_common_header(current_session.meg_level, 0, OAM_OP_LTR, 0, 6, &ltr_tx_frame.oam_header);
-
-    /* Build LTR frame */
-    struct ltr_egress_id_tlv egress_id;
-    memset(&egress_id, 0, sizeof(egress_id));
-
-    struct reply_ingress_tlv reply_ingress;
-    memset(&reply_ingress, 0, sizeof(reply_ingress));
+    /* Setup socket address */
+    memset(&rx_sll, 0, sizeof(struct sockaddr_ll));
+    rx_sll.sll_family = AF_PACKET;
+    rx_sll.sll_ifindex = rx_if_index;
+    rx_sll.sll_protocol = htons(ETH_P_ALL);
     
-    struct reply_egress_tlv reply_egress;
-    memset(&reply_egress, 0, sizeof(reply_egress));
-
-    oam_build_ltr_frame(current_session.transaction_id, current_session.ttl, 0, &egress_id,
-        &reply_ingress, &reply_egress, 0, &ltr_tx_frame);
-
-    /* Build Ethernet header */
-    eth_ptag = libnet_build_ethernet(
-                eth_bcast_addr,                                         /* Destination MAC */
-                (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
-                ETHERTYPE_OAM,                                          /* Ethernet type */
-                (uint8_t *)&ltr_tx_frame,                               /* Payload (LTM frame filled above) */
-                sizeof(ltr_tx_frame),                                   /* Payload size */
-                l,                                                      /* libnet context */
-                eth_ptag);                                              /* libnet eth tag */
-    
-    if (eth_ptag == -1) {
-        oam_pr_error(current_params->log_file, "Can't build LTR frame: %s\n", libnet_geterror(l));
+    /* Bind it */
+    if (bind(current_session.rx_sockfd, (struct sockaddr *)&rx_sll, sizeof(rx_sll)) == -1) {
+        oam_pr_error(current_params->log_file, "Cannot bind RX socket.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
@@ -296,11 +299,17 @@ void *oam_session_run_ltr(void *args)
     oam_pr_debug(current_params->log_file, "LTR session configured successfully.\n");
     sem_post(&current_thread->sem);
 
-    /* Send 1 LTR frame on wire */
-    if (libnet_write(l) == -1) {
-        oam_pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
-        pthread_exit(NULL);
-    }
+    /* Listen for incoming LTMs on interface */
+    while (true) {
+
+        /* Wait for data on the socket */
+        rx_bytes = recvmsg(current_session.rx_sockfd, &recv_hdr, 0);
+
+        /* We got something, look around */
+        if (rx_bytes > 0) {
+            oam_pr_debug(current_params->log_file, "Received frame on LTR session, %ld bytes.\n", rx_bytes);
+        }
+    } // while (true)
 
     pthread_cleanup_pop(0);
 
@@ -309,7 +318,7 @@ void *oam_session_run_ltr(void *args)
 
 static void ltm_session_cleanup(void *args)
 {    
-    struct oam_lt_session *current_session = (struct oam_lt_session *)args;
+    struct oam_ltm_session *current_session = (struct oam_ltm_session *)args;
 
     /* Cleanup timer data */
     if (current_session->tx_timer_p != NULL) {
@@ -341,9 +350,30 @@ static void ltm_session_cleanup(void *args)
         pthread_detach(pthread_self());
 }
 
+static void ltr_session_cleanup(void *args)
+{    
+    struct oam_ltr_session *current_session = (struct oam_ltr_session *)args;
+    
+    /* Clean up ingress libnet context */
+    if (current_session->ingress_l != NULL)
+        libnet_destroy(current_session->ingress_l);
+    
+    /* Close socket */
+    if (current_session->rx_sockfd != 0)
+        close(current_session->rx_sockfd);
+
+    /* 
+     * If a session is not successfully configured, we don't call pthread_join on it,
+     * only exit using pthread_exit. Calling pthread_detach here should automatically
+     * release resources for unconfigured sessions.
+     */
+    if (current_session->is_session_configured == false)
+        pthread_detach(pthread_self());
+}
+
 static void ltm_timeout_handler(union sigval sv)
 {
-    struct oam_lt_session *current_session = sv.sival_ptr;
+    struct oam_ltm_session *current_session = sv.sival_ptr;
 
     current_session->send_next_frame = true;
 }
