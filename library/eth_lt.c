@@ -50,6 +50,7 @@ void *oam_session_run_ltm(void *args)
     uint8_t dst_hwaddr[ETH_ALEN];
     struct oam_ltm_pdu ltm_tx_frame;
     struct oam_ltm_pdu *ltm_frame_p;
+    struct oam_ltm_egress_id_tlv egress_id;
     struct oam_ltm_session current_session;
     const uint8_t eth_bcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     struct itimerspec tx_ts;
@@ -110,7 +111,11 @@ void *oam_session_run_ltm(void *args)
     oam_build_common_header(current_session.meg_level, 0, OAM_OP_LTM, 0, 17, &ltm_tx_frame.oam_header);
 
     /* Build LTM frame */
-    oam_build_ltm_frame(current_session.transaction_id, current_session.ttl, src_hwaddr, dst_hwaddr, 0, &ltm_tx_frame);
+    egress_id.type = OAM_TLV_LTM_EGRESS;
+    egress_id.length = ntohs(8);
+    memset(&egress_id.zero_pad, 0, 2);
+    memcpy(egress_id.source_mac, src_hwaddr, ETH_ALEN);
+    oam_build_ltm_frame(current_session.transaction_id, current_session.ttl, src_hwaddr, dst_hwaddr, &egress_id, 0, &ltm_tx_frame);
 
     /* Build Ethernet header */
     eth_ptag = libnet_build_ethernet(
@@ -178,7 +183,7 @@ void *oam_session_run_ltm(void *args)
                 current_session.transaction_id++;
             
                 /* Update LTM frame */
-                oam_build_ltm_frame(current_session.transaction_id, current_session.ttl, src_hwaddr, dst_hwaddr, 0, &ltm_tx_frame);
+                oam_build_ltm_frame(current_session.transaction_id, current_session.ttl, src_hwaddr, dst_hwaddr, &egress_id, 0, &ltm_tx_frame);
             
                 /* Update Ethernet header */
                 eth_ptag = libnet_build_ethernet(
@@ -220,12 +225,14 @@ void *oam_session_run_ltr(void *args)
     uint8_t src_hwaddr[ETH_ALEN];
     struct oam_ltr_pdu ltr_tx_frame;
     struct oam_ltr_pdu *ltr_frame_p;
+    struct oam_ltm_pdu *ltm_frame_p;
     struct oam_ltr_session current_session;
     const uint8_t eth_bcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     int flag_enable = 1;
     int rx_if_index;
     struct sockaddr_ll rx_sll;
     ssize_t rx_bytes;
+    struct ether_header *eh_p;
 
     /* Setup buffer and header structs for received frames */
     uint8_t recv_buf[8192];
@@ -296,7 +303,7 @@ void *oam_session_run_ltr(void *args)
 
     /* Session configuration successful, return a valid session ID */
     current_session.is_session_configured = true;
-    oam_pr_debug(current_params->log_file, "LTR session configured successfully.\n");
+    oam_pr_debug(current_params->log_file, "LTR session configured successfully [%s].\n", current_params->if_name);
     sem_post(&current_thread->sem);
 
     /* Listen for incoming LTMs on interface */
@@ -307,7 +314,31 @@ void *oam_session_run_ltr(void *args)
 
         /* We got something, look around */
         if (rx_bytes > 0) {
-            oam_pr_debug(current_params->log_file, "Received frame on LTR session, %ld bytes.\n", rx_bytes);
+            
+            /* Get ETH header */
+            eh_p = (struct ether_header *)recv_buf;
+            
+            /* If it is not an OAM frame, drop it */
+            if (ntohs(eh_p->ether_type) != ETHERTYPE_OAM)
+                continue;
+
+            oam_pr_debug(current_params->log_file, "Received OAM frame on LTR session, %ld bytes.\n", rx_bytes);
+
+            /* If frame is not OAM LTM, discard it */
+            ltm_frame_p = (struct oam_ltm_pdu *)(recv_buf + sizeof(struct ether_header));
+            if (ltm_frame_p->oam_header.opcode != OAM_OP_LTM)
+                continue;
+
+            /* Check MEG level*/
+            if (((ltm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
+                oam_pr_debug(current_params->log_file, "Ignoring LTM with different MEG level: %d != %d\n", ((ltm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                            current_session.meg_level);
+                continue;
+            }
+
+            /* If TTL is 0, drop it */
+            if (ltm_frame_p->ttl == 0)
+                continue;
         }
     } // while (true)
 

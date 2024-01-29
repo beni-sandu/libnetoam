@@ -86,6 +86,14 @@ struct oam_lb_pdu {
 	uint8_t end_tlv;
 } __attribute__((__packed__));
 
+/* LTM Egress Identifier TLV */
+struct oam_ltm_egress_id_tlv {
+	uint8_t type;
+	uint16_t length;
+	uint16_t zero_pad;
+	uint8_t source_mac[ETH_ALEN];
+} __attribute__((__packed__));
+
  /* ETH-LT LTM PDU format */
 struct oam_ltm_pdu {
 	struct oam_common_header oam_header;
@@ -93,6 +101,7 @@ struct oam_ltm_pdu {
 	uint8_t ttl;
 	uint8_t origin_mac[ETH_ALEN];
 	uint8_t target_mac[ETH_ALEN];
+	struct oam_ltm_egress_id_tlv egress_id_tlv;
 	uint8_t end_tlv;
 } __attribute__((__packed__));
 
@@ -135,7 +144,7 @@ void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode
 		uint8_t tlv_offset, struct oam_common_header *header);
 void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame);
 void oam_build_ltm_frame(uint32_t transaction_id, uint8_t ttl, uint8_t *origin_mac, uint8_t *target_mac,
-        uint8_t end_tlv, struct oam_ltm_pdu *oam_ltm_frame);
+        struct oam_ltm_egress_id_tlv *egress_id_tlv, uint8_t end_tlv, struct oam_ltm_pdu *oam_ltm_frame);
 void oam_build_ltr_frame(uint32_t transaction_id, uint8_t ttl, uint8_t relay_action, struct ltr_egress_id_tlv *egress_id,
         struct reply_ingress_tlv *reply_ingress, struct reply_egress_tlv *reply_egress, uint8_t end_tlv,
         struct oam_ltr_pdu *oam_ltr_frame);
