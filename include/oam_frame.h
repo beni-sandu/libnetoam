@@ -132,7 +132,7 @@ struct oam_ltr_pdu {
 	struct oam_common_header oam_header;
 	uint32_t transaction_id;
 	uint8_t ttl;
-	uint8_t relay_action;
+	uint8_t relay_action; //TODO: check proper values in Table 21-27 of IEEE 802.1Q
 	struct ltr_egress_id_tlv egress_id;
 	struct reply_ingress_tlv reply_ingress;
 	struct reply_egress_tlv reply_egress;

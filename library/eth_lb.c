@@ -19,7 +19,7 @@
 /* Forward declarations */
 static void lbm_timeout_handler(union sigval sv);
 static void lb_session_cleanup(void *args);
-static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms);
+ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms);
 void *oam_session_run_lbr(void *args);
 void *oam_session_run_lbm(void *args);
 

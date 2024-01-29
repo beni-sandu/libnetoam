@@ -385,6 +385,27 @@ void *oam_session_run_ltr(void *args)
     /* Install session cleanup handler */
     pthread_cleanup_push(ltr_session_cleanup, (void *)&current_session);
 
+    /* This socket is used only to send LTRs on the ingress port(the interface where we listen for LTMs) */
+    current_session.ingress_l = libnet_init(
+        LIBNET_LINK,                                /* injection type */
+        current_params->if_name,                    /* network interface */
+        libnet_errbuf);                             /* error buffer */
+
+    if (current_session.ingress_l == NULL) {
+        oam_pr_error(current_params->log_file, "libnet_init() failed: %s\n", libnet_errbuf);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Get MAC of local interface */
+    if (oam_get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
+        oam_pr_error(current_params->log_file, "Error getting MAC address of local interface.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
     /* Create one RX socket which is used to listen for LTM PDUs. */
     if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
         oam_pr_error(current_params->log_file, "Cannot create RX socket.\n");
@@ -462,6 +483,43 @@ void *oam_session_run_ltr(void *args)
             /* If TTL is 0, drop it */
             if (ltm_frame_p->ttl == 0)
                 continue;
+            
+            /* Prepare a LTR for the initiating MEP starting with the common OAM header. */
+            oam_build_common_header(current_session.meg_level, 0, OAM_OP_LTR, 0, 6, &ltr_tx_frame.oam_header);
+
+            //TODO: check all extra TLVs
+            struct ltr_egress_id_tlv egress_id;
+            memset(&egress_id, 0, sizeof(egress_id));
+
+            struct reply_ingress_tlv reply_ingress;
+            memset(&reply_ingress, 0, sizeof(reply_ingress));
+
+            struct reply_egress_tlv reply_egress;
+            memset(&reply_egress, 0, sizeof(reply_egress));
+
+            /* Build LTR frame */
+            oam_build_ltr_frame(htonl(ltm_frame_p->transaction_id), ltm_frame_p->ttl-1, 0, &egress_id,
+                &reply_ingress, &reply_egress, 0, &ltr_tx_frame);
+            
+            /* Build ETH header */
+            eth_ptag = libnet_build_ethernet(
+                ltm_frame_p->origin_mac,                                /* Destination MAC */
+                (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
+                ETHERTYPE_OAM,                                          /* Ethernet type */
+                (uint8_t *)&ltr_tx_frame,                               /* Payload (frame filled above) */
+                sizeof(ltr_tx_frame),                                   /* Payload size */
+                current_session.ingress_l,                              /* libnet handle */
+                eth_ptag);                                              /* libnet tag */
+        
+            /* Add delay between 0s - 1s */
+            usleep(1000 * (random() % 1000));
+
+            /* Send frame on wire */
+            if (libnet_write(current_session.ingress_l) == -1) {
+                oam_pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(current_session.ingress_l));
+                continue;
+            }
+
         }
     } // while (true)
 
