@@ -11,7 +11,6 @@
 #include <libnet.h>
 #include <sys/capability.h>
 #include <linux/if_packet.h>
-#include <poll.h>
 
 #include "../include/oam_session.h"
 #include "../include/oam_frame.h"
@@ -43,32 +42,6 @@ static __thread cap_flag_value_t cap_val;
 static __thread int ns_fd;
 static __thread char ns_buf[MAX_PATH] = "/run/netns/";
 static __thread struct tpacket_auxdata recv_auxdata;
-
-static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms)
-{
-    struct pollfd fds[1];
-    struct timespec ts;
-    int ret;
-
-    fds[0].fd = sockfd;
-    fds[0].events = POLLIN;
-
-    ts.tv_sec = timeout_ms / 1000;
-    ts.tv_nsec = timeout_ms % 1000 * 1000000;
-
-    ret = ppoll(fds, 1, &ts, NULL);
-
-    if (ret == -1) {
-        oam_pr_error(NULL, "ppoll call error.\n"); //error in ppoll call
-        return -1;
-    } else if (ret == 0) {
-        return -2; //timeout expired
-    } else
-        if (fds[0].revents & POLLIN)
-            return recvmsg(sockfd, recv_hdr, 0);
-
-    return -1;
-}
 
 /* Entry point of a new OAM LBM session */
 void *oam_session_run_lbm(void *args)

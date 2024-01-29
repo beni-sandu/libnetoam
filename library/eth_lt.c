@@ -31,6 +31,7 @@ void *oam_session_run_ltr(void *args);
 static void ltm_timeout_handler(union sigval sv);
 static void ltm_session_cleanup(void *args);
 static void ltr_session_cleanup(void *args);
+ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms);
 
 /* Per thread variables */
 static __thread libnet_t *l;
@@ -50,11 +51,34 @@ void *oam_session_run_ltm(void *args)
     uint8_t dst_hwaddr[ETH_ALEN];
     struct oam_ltm_pdu ltm_tx_frame;
     struct oam_ltm_pdu *ltm_frame_p;
+    struct oam_ltr_pdu *ltr_frame_p;
     struct oam_ltm_egress_id_tlv egress_id;
     struct oam_ltm_session current_session;
     const uint8_t eth_bcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     struct itimerspec tx_ts;
     struct sigevent tx_sev;
+    int flag_enable = 1;
+    int rx_if_index;
+    struct sockaddr_ll rx_sll;
+    struct ether_header *eh_p;
+
+    /* Setup buffer and header structs for received frames */
+    uint8_t recv_buf[8192];
+	struct iovec recv_iov = {
+          .iov_base = recv_buf,
+          .iov_len = 8192,
+    };
+
+	union {
+          struct cmsghdr cmsg;
+          char buf[CMSG_SPACE(sizeof(struct tpacket_auxdata))];
+	} cmsg_buf;
+	struct msghdr recv_hdr = {
+          .msg_iov = &recv_iov,
+          .msg_iovlen = 1,
+          .msg_control = &cmsg_buf,
+          .msg_controllen = sizeof(cmsg_buf)
+     };
 
     /* Initialize session data */
     current_session.l = NULL;
@@ -98,6 +122,45 @@ void *oam_session_run_ltm(void *args)
     /* Get destination MAC address */
     if (oam_hwaddr_str2bin(current_params->dst_mac, dst_hwaddr) == -1) {
         oam_pr_error(current_params->log_file, "Error getting destination MAC address.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Create one RX socket which is used to listen for LTR PDUs */
+    if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
+        oam_pr_error(current_params->log_file, "Cannot create RX socket.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* We will probably need packet auxdata (TODO: remove if not needed) */
+    if (setsockopt(current_session.rx_sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
+        oam_pr_error(current_params->log_file, "Can't enable packet auxdata.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Get interface index */
+    rx_if_index = if_nametoindex(current_params->if_name);
+    if (rx_if_index == 0) {
+        oam_pr_error(current_params->log_file, "Error getting RX interface index.\n");
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Setup socket address */
+    memset(&rx_sll, 0, sizeof(struct sockaddr_ll));
+    rx_sll.sll_family = AF_PACKET;
+    rx_sll.sll_ifindex = rx_if_index;
+    rx_sll.sll_protocol = htons(ETH_P_ALL);
+    
+    /* Bind it */
+    if (bind(current_session.rx_sockfd, (struct sockaddr *)&rx_sll, sizeof(rx_sll)) == -1) {
+        oam_pr_error(current_params->log_file, "Cannot bind RX socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -170,12 +233,22 @@ void *oam_session_run_ltm(void *args)
     }
 
     bool frame_sent = false;
+    bool got_reply = true;
 
     /* Main processing loop */
     while (true) {
 
         if (current_session.send_next_frame == true) {
+
+            /* We did not get any replies */
+            if (got_reply == false) {
+
+                oam_pr_info(current_params->log_file, "[%s] No replies to LTM, trans_id: %d\n",
+                        current_params->if_name, current_session.transaction_id);
+                //TODO: add needed callbacks
+            }
             frame_sent = false;
+            got_reply = false;
 
             if (frame_sent == false) {
             
@@ -207,10 +280,60 @@ void *oam_session_run_ltm(void *args)
                     continue;
                 }
 
+                oam_pr_debug(current_params->log_file, "[%s] Sent LTM with trans_id: %d\n", current_params->if_name, current_session.transaction_id);
+
                 current_session.send_next_frame = false;
                 frame_sent = true;
             } // if (frame_sent == false)
         } // if (current_session.send_next_frame == true)
+
+        /* Loop for checking LTRs */
+        while (true && (current_session.send_next_frame != true)) {
+            
+            /* Check for incoming data */
+            if (recvmsg_ppoll(current_session.rx_sockfd, &recv_hdr, 5) > 0) {
+
+                /* Get ETH header */
+                eh_p = (struct ether_header *)recv_buf;
+
+                /* If frame is not addressed to this interface, drop it */
+                if (memcmp(eh_p->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+                    continue;
+
+                /* If it is not an OAM frame, drop it */
+                if (ntohs(eh_p->ether_type) != ETHERTYPE_OAM)
+                    continue;
+
+                /* If frame is not OAM LTR, discard it */
+                ltr_frame_p = (struct oam_ltr_pdu *)(recv_buf + sizeof(struct ether_header));
+                if (ltr_frame_p->oam_header.opcode != OAM_OP_LTR)
+                    continue;
+    
+                /* Check MEG level*/
+                if (((ltr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
+                    oam_pr_debug(current_params->log_file, "Ignoring LBR with different MEG level: %d != %d\n", ((ltr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                                 current_session.meg_level);
+                    continue;
+                }
+
+                /* Check transaction ID */
+                if (ntohl(ltr_frame_p->transaction_id) != current_session.transaction_id) {
+                    oam_pr_debug(current_params->log_file, "Ignoring LBR with different trans_id = %d\n", ntohl(ltr_frame_p->transaction_id));
+                    continue;
+                }
+
+                oam_pr_info(current_params->log_file, "[%s.%u] Got LTR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d\n",
+                            current_params->if_name, current_session.vlan_id ,eh_p->ether_shost[0], eh_p->ether_shost[1], eh_p->ether_shost[2], eh_p->ether_shost[3],
+                            eh_p->ether_shost[4],eh_p->ether_shost[5], ntohl(ltr_frame_p->transaction_id));
+            
+                got_reply = 1;
+                frame_sent = 0;
+                    
+                //TODO: add callbacks
+            
+            } // if (recvmsg_ppoll > 0)
+        } // multicast loop
+
     } // while (true)
 
     pthread_cleanup_pop(0);

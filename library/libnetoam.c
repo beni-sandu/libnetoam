@@ -19,6 +19,7 @@
 #include <net/if.h>
 #include <net/if_arp.h>
 #include <stdarg.h>
+#include <poll.h>
 
 #include "../include/libnetoam.h"
 
@@ -26,6 +27,32 @@
 
 /* Prototypes */
 static int hex2bin(char ch);
+
+ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms)
+{
+    struct pollfd fds[1];
+    struct timespec ts;
+    int ret;
+
+    fds[0].fd = sockfd;
+    fds[0].events = POLLIN;
+
+    ts.tv_sec = timeout_ms / 1000;
+    ts.tv_nsec = timeout_ms % 1000 * 1000000;
+
+    ret = ppoll(fds, 1, &ts, NULL);
+
+    if (ret == -1) {
+        oam_pr_error(NULL, "ppoll call error.\n"); //error in ppoll call
+        return -1;
+    } else if (ret == 0) {
+        return -2; //timeout expired
+    } else
+        if (fds[0].revents & POLLIN)
+            return recvmsg(sockfd, recv_hdr, 0);
+
+    return -1;
+}
 
 static int hex2bin(char ch)
 {
