@@ -50,6 +50,7 @@ struct oam_ltm_session {
     struct oam_ltm_timer *tx_timer_p;                         /* Pointer to LTM TX timer */
     int rx_sockfd;
     volatile bool send_next_frame;
+    bool target_mac_reached;
 };
 
 struct oam_ltr_session {

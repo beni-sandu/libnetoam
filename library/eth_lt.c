@@ -89,6 +89,7 @@ void *oam_session_run_ltm(void *args)
     current_session.is_session_configured = false;
     current_session.rx_sockfd = 0;
     current_session.send_next_frame = true;
+    current_session.target_mac_reached = true;
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
@@ -243,10 +244,18 @@ void *oam_session_run_ltm(void *args)
             /* We did not get any replies */
             if (got_reply == false) {
 
-                oam_pr_info(current_params->log_file, "[%s] No replies to LTM, trans_id: %d\n",
-                        current_params->if_name, current_session.transaction_id);
+                oam_pr_info(current_params->log_file, "[%s.%u] No replies to LTM, trans_id: %d\n",
+                        current_params->if_name, current_session.vlan_id, current_session.transaction_id);
+                //TODO: check callbacks
+            }
+
+            /* We did not reach our target MAC */
+            if (current_session.target_mac_reached == false) {
+                oam_pr_info(current_params->log_file, "[%s.%u] Target MAC could not be reached.\n", current_params->if_name, current_session.vlan_id);
+                current_session.target_mac_reached = false;
                 //TODO: add needed callbacks
             }
+
             frame_sent = false;
             got_reply = false;
 
@@ -280,10 +289,12 @@ void *oam_session_run_ltm(void *args)
                     continue;
                 }
 
-                oam_pr_debug(current_params->log_file, "[%s] Sent LTM with trans_id: %d\n", current_params->if_name, current_session.transaction_id);
+                oam_pr_debug(current_params->log_file, "[%s.%u] Sent LTM with trans_id: %d\n", current_params->if_name, current_session.vlan_id,
+                    current_session.transaction_id);
 
                 current_session.send_next_frame = false;
                 frame_sent = true;
+                current_session.target_mac_reached = false;
             } // if (frame_sent == false)
         } // if (current_session.send_next_frame == true)
 
@@ -325,7 +336,13 @@ void *oam_session_run_ltm(void *args)
                 oam_pr_info(current_params->log_file, "[%s.%u] Got LTR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d\n",
                             current_params->if_name, current_session.vlan_id ,eh_p->ether_shost[0], eh_p->ether_shost[1], eh_p->ether_shost[2], eh_p->ether_shost[3],
                             eh_p->ether_shost[4],eh_p->ether_shost[5], ntohl(ltr_frame_p->transaction_id));
-            
+
+                /* Did we reach our target MAC? */
+                if (memcmp(eh_p->ether_shost, dst_hwaddr, ETH_ALEN) == 0) {
+                    oam_pr_info(current_params->log_file, "[%s.%u] Target MAC reached!\n", current_params->if_name, current_session.vlan_id);
+                    current_session.target_mac_reached = true;
+                }
+
                 got_reply = 1;
                 frame_sent = 0;
                     
