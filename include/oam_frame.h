@@ -37,12 +37,24 @@ enum oam_opcode {
  */
 enum oam_tlv_type {
 	OAM_TLV_END = 0,
+	OAM_TLV_SENDER_ID = 1,
 	OAM_TLV_DATA = 3,
 	OAM_TLV_REPLY_INGRESS = 5,
 	OAM_TLV_REPLY_EGRESS = 6,
 	OAM_TLV_LTM_EGRESS = 7,
 	OAM_TLV_LTR_EGRESS = 8,
 };
+
+/*
+ * Y.1731 does not mention this TLV, but 802.1ag does. In case there is some system that
+ * requires for it to be present (although it should be optional), construct a minimum
+ * length Sender ID, that is still valid.
+ */
+struct oam_sender_id_tlv {
+	uint8_t type;
+	uint16_t length;
+	uint8_t chassis_id_len;
+} __attribute__((__packed__));
 
 #define ETHERTYPE_OAM 0x8902
 
@@ -83,6 +95,7 @@ struct oam_common_header {
 struct oam_lb_pdu {
 	struct oam_common_header oam_header;
 	uint32_t transaction_id;
+	struct oam_sender_id_tlv sender_id;
 	uint8_t end_tlv;
 } __attribute__((__packed__));
 

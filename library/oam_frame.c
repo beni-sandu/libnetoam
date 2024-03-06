@@ -15,6 +15,13 @@ void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_
 {    
     /* At this point, the common header should be already filled in, so we only add the rest of the LB frame */
     oam_frame->transaction_id = htonl(transaction_id);
+
+    /* Add Sender ID TLV */
+    oam_frame->sender_id.type = OAM_TLV_SENDER_ID;
+    oam_frame->sender_id.length = htons(1);
+    oam_frame->sender_id.chassis_id_len = 0;
+
+    /* Add End TLV */
     oam_frame->end_tlv = end_tlv;
 }
 
