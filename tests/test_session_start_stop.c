@@ -1,4 +1,4 @@
-#include <libnetoam/libnetoam.h>
+#include "../include/libnetoam.h"
 
 int main(void)
 {

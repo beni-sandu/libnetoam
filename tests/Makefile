@@ -2,11 +2,11 @@ SRCS := $(wildcard *.c)
 BINS := $(SRCS:%.c=%)
 
 bins:
-	@for i in $(SRCS) ; do \
-		$(CC) $(CFLAGS) $${i} -o $${i%.*} -lnetoam; \
+	$(Q)for i in $(SRCS) ; do \
+		$(CC) $(CFLAGS) $${i} -L$(OUTDIR) -o $${i%.*} -lnetoam; \
 	done
 
 clean:
-	@rm -f $(BINS) 2> /dev/null ||:
-	@rm -f *.out 2> /dev/null ||:
-	@rm -f *.err 2> /dev/null ||:
+	$(Q)rm -f $(BINS) 2> /dev/null ||:
+	$(Q)rm -f *.out 2> /dev/null ||:
+	$(Q)rm -f *.err 2> /dev/null ||:
