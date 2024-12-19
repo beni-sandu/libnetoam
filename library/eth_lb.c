@@ -318,7 +318,7 @@ void *oam_session_run_lbm(void *args)
     oam_pr_debug(current_params->log_file, "TX timer ID: %p\n", tx_timer.timer_id);
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
         oam_pr_error(current_params->log_file, "Cannot create socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -349,7 +349,7 @@ void *oam_session_run_lbm(void *args)
     memset(&sll, 0, sizeof(struct sockaddr_ll));
     sll.sll_family = AF_PACKET;
     sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETH_P_ALL);
+    sll.sll_protocol = htons(ETHERTYPE_OAM);
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
@@ -503,10 +503,6 @@ void *oam_session_run_lbm(void *args)
                         if ((recv_auxdata.tp_vlan_tci & 0xfff) != current_session.vlan_id)
                             continue;
                 }
-
-                /* If it is not an OAM frame, drop it */
-                if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
-                    continue;
 
                 /* If frame is not OAM LBR, discard it */
                 lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
@@ -686,7 +682,7 @@ void *oam_session_run_lbr(void *args)
     current_session.l = l;
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
         oam_pr_error(current_params->log_file, "Cannot create socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -717,7 +713,7 @@ void *oam_session_run_lbr(void *args)
     memset(&sll, 0, sizeof(struct sockaddr_ll));
     sll.sll_family = AF_PACKET;
     sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETH_P_ALL);
+    sll.sll_protocol = htons(ETHERTYPE_OAM);
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
@@ -753,10 +749,6 @@ void *oam_session_run_lbr(void *args)
             
             /* Get ETH header */
             eh = (struct ether_header *)recv_buf;
-            
-            /* If it is not an OAM frame, drop it */
-            if (ntohs(eh->ether_type) != ETHERTYPE_OAM)
-                continue;
 
             /* If frame is not OAM LBM, discard it */
             lbr_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
@@ -810,7 +802,6 @@ void *oam_session_run_lbr(void *args)
                 continue;
             }
         }
-
     } // while (true)
 
     pthread_cleanup_pop(0);
