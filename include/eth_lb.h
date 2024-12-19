@@ -52,6 +52,7 @@ struct oam_lb_session {
     uint8_t meg_level;
     bool custom_vlan;
     struct oam_lb_session_params *current_params;
+    bool is_if_tagged;                                          /* Flag describing if session is started on a VLAN */
 };
 
 /* Data passed to per session timer */

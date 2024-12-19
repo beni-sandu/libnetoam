@@ -114,6 +114,7 @@ void *oam_session_run_lbm(void *args)
     current_session.current_params = current_params;
     current_session.l = NULL;
     current_session.sockfd = 0;
+    current_session.is_if_tagged = false;
 
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
@@ -291,7 +292,8 @@ void *oam_session_run_lbm(void *args)
                 l,                                                      /* libnet handle */
                 eth_ptag);                                              /* libnet tag */
         }
-    }
+    } else
+        current_session.is_if_tagged = true;
 
     /* Initial TX timer configuration */
     tx_sev.sigev_notify = SIGEV_THREAD;                         /* Notify via thread */
@@ -390,10 +392,14 @@ void *oam_session_run_lbm(void *args)
 
                     lbm_multicast_replies = 0;
                 } else {
-
-                    oam_pr_info(current_params->log_file, "[%s.%u] Request timeout for trans_id: %d.\n",
+                    
+                    if (current_session.is_if_tagged == true)
+                        oam_pr_info(current_params->log_file, "[%s] Request timeout for trans_id: %d.\n",
+                                current_params->if_name, current_session.transaction_id);
+                    else
+                        oam_pr_info(current_params->log_file, "[%s.%u] Request timeout for trans_id: %d.\n",
                                 current_params->if_name, current_session.vlan_id, current_session.transaction_id);
-                        
+
                     /* Adjust callback related values */
                     lbm_missed_pings++;
                     lbm_replied_pings = 0;
@@ -529,15 +535,23 @@ void *oam_session_run_lbm(void *args)
                 if (current_session.is_multicast == true)
                     lbm_multicast_replies++;
 
-                oam_pr_info(current_params->log_file, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n",
-                            current_params->if_name, current_session.vlan_id ,eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
+                /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
+                if (current_session.is_if_tagged == true)
+                    oam_pr_info(current_params->log_file, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n",
+                            current_params->if_name, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
-            
+                else
+                    oam_pr_info(current_params->log_file, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n",
+                            current_params->if_name, current_session.vlan_id, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
+                            eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
+                            ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
+                            (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
+
                 got_reply = 1;
                 frame_sent = 0;
-                    
+
                 /* If we missed pings before, we are on a recovery path */
                 if (current_params->ping_recovery_threshold > 0) {
                     if (is_lbm_session_recovered == false) {
