@@ -104,6 +104,7 @@ void *oam_session_run_lbm(void *args)
      };
 
     /* Initialize some session and timer data */
+    memset(&current_session, 0, sizeof(current_session));
     current_session.lbm_tx_timer = &tx_timer;
     current_session.is_session_configured = false;
     current_session.send_next_frame = true;
@@ -111,7 +112,6 @@ void *oam_session_run_lbm(void *args)
     current_session.is_multicast = false;
     current_session.meg_level = current_params->meg_level;
     current_session.custom_vlan = false;
-    current_session.current_params = current_params;
     current_session.l = NULL;
     current_session.sockfd = 0;
     current_session.is_if_tagged = false;
@@ -235,10 +235,6 @@ void *oam_session_run_lbm(void *args)
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
-
-    /* Save HW addresses to current session */
-    current_session.src_mac = src_hwaddr;
-    current_session.dst_mac = dst_hwaddr;
 
     /* Seed random generator used for transaction id */
     srandom((uint64_t)current_params);
@@ -617,6 +613,7 @@ void *oam_session_run_lbr(void *args)
           .msg_controllen = sizeof(cmsg_buf)
      };
 
+    memset(&current_session, 0, sizeof(current_session));
     current_session.meg_level = current_params->meg_level;
     current_session.l = NULL;
     current_session.sockfd = 0;

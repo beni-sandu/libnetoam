@@ -34,8 +34,6 @@ struct oam_lb_session_params {
 };
 
 struct oam_lb_session {
-    uint8_t *src_mac;
-    uint8_t *dst_mac;
     uint32_t transaction_id;
     int sockfd;
     struct timespec time_sent;
@@ -52,7 +50,6 @@ struct oam_lb_session {
     bool is_multicast;
     uint8_t meg_level;
     bool custom_vlan;
-    struct oam_lb_session_params *current_params;
     bool is_if_tagged;                                          /* Flag describing if session is started on a VLAN */
     bool enable_console_logs;                                   /* Output log messages to console too */
 };

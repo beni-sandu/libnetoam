@@ -106,6 +106,7 @@ int oam_is_eth_vlan(char *if_name)
 
     /* Fill in request that we send to the kernel */
     size_t seq_num = 0;
+    memset(&req, 0, sizeof(req));
     struct nlmsghdr *nh;
     struct sockaddr_nl sa = {0};
     struct iovec iov[1] = { {&req, sizeof(req)} };
