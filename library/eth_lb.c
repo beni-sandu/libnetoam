@@ -394,11 +394,14 @@ void *oam_session_run_lbm(void *args)
                 } else {
                     
                     if (current_session.is_if_tagged == true)
-                        oam_pr_info(current_params->log_file, "[%s] Request timeout for trans_id: %d.\n",
-                                current_params->if_name, current_session.transaction_id);
+                        oam_pr_info(current_params->log_file, "[%s] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d.\n",
+                                current_params->if_name, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4],
+                                dst_hwaddr[5], current_session.transaction_id);
                     else
-                        oam_pr_info(current_params->log_file, "[%s.%u] Request timeout for trans_id: %d.\n",
-                                current_params->if_name, current_session.vlan_id, current_session.transaction_id);
+                        oam_pr_info(current_params->log_file, "[%s.%u] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d.\n",
+                                current_params->if_name, current_session.vlan_id, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3],
+                                dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
+                                current_session.transaction_id);
 
                     /* Adjust callback related values */
                     lbm_missed_pings++;
@@ -472,7 +475,8 @@ void *oam_session_run_lbm(void *args)
 
                 /* Get aprox timestamp of sent frame */
                 clock_gettime(CLOCK_MONOTONIC, &(current_session.time_sent));
-                oam_pr_debug(current_params->log_file, "[%s] Sent LBM with trans_id: %d\n", current_params->if_name, current_session.transaction_id);
+                oam_pr_debug(current_params->log_file, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d\n", current_params->if_name,
+                    dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
 
                 current_session.send_next_frame = false;
                 frame_sent = true;
@@ -537,13 +541,13 @@ void *oam_session_run_lbm(void *args)
 
                 /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
                 if (current_session.is_if_tagged == true)
-                    oam_pr_info(current_params->log_file, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n",
+                    oam_pr_info(current_params->log_file, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d, time: %.3f ms\n",
                             current_params->if_name, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
                 else
-                    oam_pr_info(current_params->log_file, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X trans_id: %d, time: %.3f ms\n",
+                    oam_pr_info(current_params->log_file, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d, time: %.3f ms\n",
                             current_params->if_name, current_session.vlan_id, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
