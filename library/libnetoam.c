@@ -132,6 +132,7 @@ int oam_is_eth_vlan(char *if_name)
     /* Send the request to kernel */
     if (sendmsg(sfd, &msg, 0) < 0) {
         oam_pr_error(NULL, "Error sending NL request to kernel.\n");
+        close(sfd);
         return -1;
     }
 
@@ -145,6 +146,7 @@ int oam_is_eth_vlan(char *if_name)
         int len = recvmsg(sfd, &msg, 0);
         if (len < 0) {
             oam_pr_error(NULL, "Error reading NL reply from kernel.\n");
+            close(sfd);
             return -1;
         }
 
@@ -157,12 +159,14 @@ int oam_is_eth_vlan(char *if_name)
             /* End of multipart message, interface not found */
             if (nh->nlmsg_type == NLMSG_DONE) {
                 oam_pr_error(NULL, "Interface not found for NL reply.\n");
+                close(sfd);
                 return -1;
             }
 
             /* Error reading message */
             if (nh->nlmsg_type ==  NLMSG_ERROR) {
                 oam_pr_error(NULL, "Error reading NL message from kernel.\n");
+                close(sfd);
                 return -1;
             }
 
@@ -193,14 +197,17 @@ int oam_is_eth_vlan(char *if_name)
                             if (rtk->rta_type == IFLA_INFO_KIND) {
                                 
                                 /* Is it a VLAN? */
-                                if (!strcmp(((char *)RTA_DATA(rtk)), "vlan"))
+                                if (!strcmp(((char *)RTA_DATA(rtk)), "vlan")) {
+                                    close(sfd);
                                     return 0;
+                                }
                             }
                         }
                         
                     }
                 }
 
+                close(sfd);
                 return 1;
             }
         }
