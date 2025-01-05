@@ -233,7 +233,7 @@ void oam_pr_log(char *log_file, const char *format, ...)
 {
     va_list arg;
     time_t now;
-    struct tm *local = NULL;
+    struct tm local_buf;
     char timestamp[100];
     FILE *file = NULL;
 
@@ -253,8 +253,14 @@ void oam_pr_log(char *log_file, const char *format, ...)
 
     va_start(arg, format);
     now = time(NULL);
-    local = localtime(&now);
-    strftime(timestamp, sizeof(timestamp), "%d-%b-%Y %H:%M:%S", local);
+
+    if (localtime_r(&now, &local_buf) == NULL) {
+        va_end(arg);
+        fclose(file);
+        return;
+    }
+    
+    strftime(timestamp, sizeof(timestamp), "%d-%b-%Y %H:%M:%S", &local_buf);
     fprintf(file, "[%s] ", timestamp);
     vfprintf(file, format, arg);
     va_end(arg);
