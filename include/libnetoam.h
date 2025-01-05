@@ -22,17 +22,39 @@ extern "C" {
 
 /* Print macros */
 #ifdef DEBUG_ENABLE
-#define oam_pr_debug(file, ...) \
-    ( {printf("[DEBUG] "__VA_ARGS__) ; oam_pr_log(file, "[DEBUG] "__VA_ARGS__);} )
+#define oam_pr_debug(param_ptr, ...) \
+    ({ \
+    oam_pr_log(((struct oam_lb_session_params *)param_ptr)->log_file, "[DEBUG] "__VA_ARGS__); \
+    if (param_ptr == NULL) \
+        printf("[DEBUG] "__VA_ARGS__); \
+    else \
+        if (((struct oam_lb_session_params *)param_ptr)->enable_console_logs == true) \
+            printf("[DEBUG] "__VA_ARGS__); \
+    })
 #else
-#define oam_pr_debug(...)
+#define oam_pr_debug(...) \
+    ({ do {} while(0); })
 #endif
 
-#define oam_pr_info(file, ...) \
-    ( {printf("[INFO] "__VA_ARGS__) ; oam_pr_log(file, "[INFO] "__VA_ARGS__);} )
+#define oam_pr_info(param_ptr, ...) \
+    ({ \
+    oam_pr_log(((struct oam_lb_session_params *)param_ptr)->log_file, "[INFO] "__VA_ARGS__); \
+    if (param_ptr == NULL) \
+        printf("[INFO] "__VA_ARGS__); \
+    else \
+        if (((struct oam_lb_session_params *)param_ptr)->enable_console_logs == true) \
+            printf("[INFO] "__VA_ARGS__); \
+    })
 
-#define oam_pr_error(file, ...) \
-    ( {fprintf(stderr, "[ERROR] "__VA_ARGS__) ; oam_pr_log(file, "[ERROR] "__VA_ARGS__);})
+#define oam_pr_error(param_ptr, ...) \
+    ({ \
+    oam_pr_log(((struct oam_lb_session_params *)param_ptr)->log_file, "[ERROR] "__VA_ARGS__); \
+    if (param_ptr == NULL) \
+        fprintf(stderr, "[ERROR] "__VA_ARGS__); \
+    else \
+        if (((struct oam_lb_session_params *)param_ptr)->enable_console_logs == true) \
+            fprintf(stderr, "[ERROR] "__VA_ARGS__); \
+    })
 
 /* Library interfaces */
 const char *netoam_lib_version(void);

@@ -115,6 +115,7 @@ void *oam_session_run_lbm(void *args)
     current_session.l = NULL;
     current_session.sockfd = 0;
     current_session.is_if_tagged = false;
+    current_session.enable_console_logs = current_params->enable_console_logs;
 
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
@@ -133,14 +134,14 @@ void *oam_session_run_lbm(void *args)
     /* Check for CAP_NET_RAW capability */
     caps = cap_get_proc();
     if (caps == NULL) {
-        oam_pr_error(current_params->log_file, "cap_get_proc.\n");
+        oam_pr_error(current_params, "cap_get_proc.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
     if (cap_get_flag(caps, CAP_NET_RAW, CAP_EFFECTIVE, &cap_val) == -1) {
-        oam_pr_error(current_params->log_file, "cap_get_flag.\n");
+        oam_pr_error(current_params, "cap_get_flag.\n");
         cap_free(caps);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -149,7 +150,7 @@ void *oam_session_run_lbm(void *args)
 
     if (cap_val != CAP_SET) {
         cap_free(caps);
-        oam_pr_error(current_params->log_file, "Execution requires CAP_NET_RAW capability.\n");
+        oam_pr_error(current_params, "Execution requires CAP_NET_RAW capability.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -165,14 +166,14 @@ void *oam_session_run_lbm(void *args)
         ns_fd = open(ns_buf, O_RDONLY);
 
         if (ns_fd == -1) {
-            oam_pr_error(current_params->log_file, "open ns fd.\n");
+            oam_pr_error(current_params, "open ns fd.\n");
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
             pthread_exit(NULL);
         }
 
         if (setns(ns_fd, CLONE_NEWNET) == -1) {
-            oam_pr_error(current_params->log_file, "set ns.\n");
+            oam_pr_error(current_params, "set ns.\n");
             close(ns_fd);
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
@@ -188,7 +189,7 @@ void *oam_session_run_lbm(void *args)
         libnet_errbuf);                             /* error buffer */
 
     if (l == NULL) {
-        oam_pr_error(current_params->log_file, "libnet_init() failed: %s\n", libnet_errbuf);
+        oam_pr_error(current_params, "libnet_init() failed: %s\n", libnet_errbuf);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -199,7 +200,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Get source MAC address */
     if (oam_get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
-        oam_pr_error(current_params->log_file, "Error getting MAC address of local interface.\n");
+        oam_pr_error(current_params, "Error getting MAC address of local interface.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -229,7 +230,7 @@ void *oam_session_run_lbm(void *args)
             current_session.interval_ms = 5000;
 
     } else if (oam_hwaddr_str2bin(current_params->dst_mac, dst_hwaddr) == -1) {
-        oam_pr_error(current_params->log_file, "Error getting destination MAC address.\n");
+        oam_pr_error(current_params, "Error getting destination MAC address.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -260,7 +261,7 @@ void *oam_session_run_lbm(void *args)
         /* If we a have priority code point or VLAN ID, we need to add a 802.1q header, even if VLAN ID is 0. */
         if (current_params->pcp > 0 || current_params->vlan_id > 0) {
             if (current_params->pcp > 7) {
-                oam_pr_debug(current_params->log_file, "[%s] allowed PCP range is 0 - 7, setting to 0.\n", current_params->if_name);
+                oam_pr_debug(current_params, "[%s] allowed PCP range is 0 - 7, setting to 0.\n", current_params->if_name);
                 current_session.pcp = 0;
             } else {
                 current_session.pcp = current_params->pcp;
@@ -309,7 +310,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Create TX timer */
     if (timer_create(CLOCK_MONOTONIC, &tx_sev, &(tx_timer.timer_id)) == -1) {
-        oam_pr_error(current_params->log_file, "Cannot create timer.\n");
+        oam_pr_error(current_params, "Cannot create timer.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -317,11 +318,11 @@ void *oam_session_run_lbm(void *args)
 
     /* Timer should be created, but we still get a NULL pointer sometimes */
     tx_timer.is_timer_created = true;
-    oam_pr_debug(current_params->log_file, "TX timer ID: %p\n", tx_timer.timer_id);
+    oam_pr_debug(current_params, "TX timer ID: %p\n", tx_timer.timer_id);
 
     /* Create a raw socket for incoming frames */
     if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
-        oam_pr_error(current_params->log_file, "Cannot create socket.\n");
+        oam_pr_error(current_params, "Cannot create socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -332,7 +333,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Enable packet auxdata */
     if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
-        oam_pr_error(current_params->log_file, "Can't enable packet auxdata.\n");
+        oam_pr_error(current_params, "Can't enable packet auxdata.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -341,7 +342,7 @@ void *oam_session_run_lbm(void *args)
     /* Get interface index */
     if_index = if_nametoindex(current_params->if_name);
     if (if_index == 0) {
-        oam_pr_error(current_params->log_file, "if_nametoindex.\n");
+        oam_pr_error(current_params, "if_nametoindex.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -355,7 +356,7 @@ void *oam_session_run_lbm(void *args)
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
-        oam_pr_error(current_params->log_file, "Cannot bind socket.\n");
+        oam_pr_error(current_params, "Cannot bind socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -366,7 +367,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Start timer */
     if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
-        oam_pr_error(current_params->log_file, "timer_settime.\n");
+        oam_pr_error(current_params, "timer_settime.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -375,7 +376,7 @@ void *oam_session_run_lbm(void *args)
     bool got_reply = true;
     bool frame_sent = false;
 
-    oam_pr_debug(current_params->log_file, "LBM session configured successfully.\n");
+    oam_pr_debug(current_params, "LBM session configured successfully.\n");
     sem_post(&current_thread->sem);
 
     /* Processing loop for incoming frames */
@@ -387,21 +388,20 @@ void *oam_session_run_lbm(void *args)
             if (got_reply == false) {
 
                 if (current_session.is_multicast == true) {
-                    oam_pr_info(current_params->log_file, "[%s] No replies to multicast LBM, trans_id: %d\n",
+                    oam_pr_info(current_params, "[%s] No replies to multicast LBM, trans_id: %d\n",
                             current_params->if_name, current_session.transaction_id);
 
                     lbm_multicast_replies = 0;
                 } else {
                     
                     if (current_session.is_if_tagged == true)
-                        oam_pr_info(current_params->log_file, "[%s] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d.\n",
+                        oam_pr_info(current_params, "[%s] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d.\n",
                                 current_params->if_name, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4],
                                 dst_hwaddr[5], current_session.transaction_id);
                     else
-                        oam_pr_info(current_params->log_file, "[%s.%u] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d.\n",
+                        oam_pr_info(current_params, "[%s.%u] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d.\n",
                                 current_params->if_name, current_session.vlan_id, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3],
                                 dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
-                                current_session.transaction_id);
 
                     /* Adjust callback related values */
                     lbm_missed_pings++;
@@ -462,20 +462,20 @@ void *oam_session_run_lbm(void *args)
                 }
 
                 if (eth_ptag == -1) {
-                    oam_pr_error(current_params->log_file, "Can't build LBM frame: %s\n", libnet_geterror(l));
+                    oam_pr_error(current_params, "Can't build LBM frame: %s\n", libnet_geterror(l));
                     current_session.send_next_frame = false;
                     continue;
                 }
 
                 if (libnet_write(l) == -1) {
-                    oam_pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
+                    oam_pr_error(current_params, "Write error: %s\n", libnet_geterror(l));
                     current_session.send_next_frame = false;
                     continue;
                 }
 
                 /* Get aprox timestamp of sent frame */
                 clock_gettime(CLOCK_MONOTONIC, &(current_session.time_sent));
-                oam_pr_debug(current_params->log_file, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d\n", current_params->if_name,
+                oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d\n", current_params->if_name,
                     dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
 
                 current_session.send_next_frame = false;
@@ -521,14 +521,14 @@ void *oam_session_run_lbm(void *args)
     
                 /* Check MEG level*/
                 if (((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
-                    oam_pr_debug(current_params->log_file, "Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                    oam_pr_debug(current_params, "Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
                                  current_session.meg_level);
                     continue;
                 }
 
                 /* Check transaction ID */
                 if (ntohl(lbm_frame_p->transaction_id) != current_session.transaction_id) {
-                    oam_pr_debug(current_params->log_file, "Ignoring LBR with different trans_id = %d\n", ntohl(lbm_frame_p->transaction_id));
+                    oam_pr_debug(current_params, "Ignoring LBR with different trans_id = %d\n", ntohl(lbm_frame_p->transaction_id));
                     continue;
                 }
 
@@ -541,13 +541,13 @@ void *oam_session_run_lbm(void *args)
 
                 /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
                 if (current_session.is_if_tagged == true)
-                    oam_pr_info(current_params->log_file, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d, time: %.3f ms\n",
+                    oam_pr_info(current_params, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d, time: %.3f ms\n",
                             current_params->if_name, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
                 else
-                    oam_pr_info(current_params->log_file, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d, time: %.3f ms\n",
+                    oam_pr_info(current_params, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d, time: %.3f ms\n",
                             current_params->if_name, current_session.vlan_id, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
@@ -620,6 +620,7 @@ void *oam_session_run_lbr(void *args)
     current_session.meg_level = current_params->meg_level;
     current_session.l = NULL;
     current_session.sockfd = 0;
+    current_session.enable_console_logs = current_params->enable_console_logs;
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
@@ -627,14 +628,14 @@ void *oam_session_run_lbr(void *args)
     /* Check for CAP_NET_RAW capability */
     caps = cap_get_proc();
     if (caps == NULL) {
-        oam_pr_error(current_params->log_file, "cap_get_proc.\n");
+        oam_pr_error(current_params, "cap_get_proc.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
     if (cap_get_flag(caps, CAP_NET_RAW, CAP_EFFECTIVE, &cap_val) == -1) {
-        oam_pr_error(current_params->log_file, "cap_get_flag.\n");
+        oam_pr_error(current_params, "cap_get_flag.\n");
         cap_free(caps);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -643,7 +644,7 @@ void *oam_session_run_lbr(void *args)
 
     if (cap_val != CAP_SET) {
         cap_free(caps);
-        oam_pr_error(current_params->log_file, "Execution requires CAP_NET_RAW capability.\n");
+        oam_pr_error(current_params, "Execution requires CAP_NET_RAW capability.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -659,14 +660,14 @@ void *oam_session_run_lbr(void *args)
         ns_fd = open(ns_buf, O_RDONLY);
 
         if (ns_fd == -1) {
-            oam_pr_error(current_params->log_file, "open ns fd.\n");
+            oam_pr_error(current_params, "open ns fd.\n");
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
             pthread_exit(NULL);
         }
 
         if (setns(ns_fd, CLONE_NEWNET) == -1) {
-            oam_pr_error(current_params->log_file, "set ns.\n");
+            oam_pr_error(current_params, "set ns.\n");
             close(ns_fd);
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
@@ -682,7 +683,7 @@ void *oam_session_run_lbr(void *args)
         libnet_errbuf);                             /* error buffer */
 
     if (l == NULL) {
-        oam_pr_error(current_params->log_file, "libnet_init() failed: %s\n", libnet_errbuf);
+        oam_pr_error(current_params, "libnet_init() failed: %s\n", libnet_errbuf);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -690,7 +691,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Get source MAC address */
     if (oam_get_eth_mac(current_params->if_name, src_hwaddr) == -1) {
-        oam_pr_error(current_params->log_file, "Error getting MAC address of local interface.\n");
+        oam_pr_error(current_params, "Error getting MAC address of local interface.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -701,7 +702,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Create a raw socket for incoming frames */
     if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
-        oam_pr_error(current_params->log_file, "Cannot create socket.\n");
+        oam_pr_error(current_params, "Cannot create socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -712,7 +713,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Enable packet auxdata */
     if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
-        oam_pr_error(current_params->log_file, "Can't enable packet auxdata.\n");
+        oam_pr_error(current_params, "Can't enable packet auxdata.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -721,7 +722,7 @@ void *oam_session_run_lbr(void *args)
     /* Get interface index */
     if_index = if_nametoindex(current_params->if_name);
     if (if_index == 0) {
-        oam_pr_error(current_params->log_file, "if_nametoindex.\n");
+        oam_pr_error(current_params, "if_nametoindex.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -735,7 +736,7 @@ void *oam_session_run_lbr(void *args)
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
-        oam_pr_error(current_params->log_file, "Cannot bind socket.\n");
+        oam_pr_error(current_params, "Cannot bind socket.\n");
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -747,7 +748,7 @@ void *oam_session_run_lbr(void *args)
     /* Session configuration is successful, return a valid session id */
     current_session.is_session_configured = true;
 
-    oam_pr_debug(current_params->log_file, "LBR session configured successfully.\n");
+    oam_pr_debug(current_params, "LBR session configured successfully.\n");
     sem_post(&current_thread->sem);
 
     /* Processing loop for incoming packets */
@@ -759,7 +760,7 @@ void *oam_session_run_lbr(void *args)
         /* We got something, look around */
         if (numbytes > 0) {
 
-            oam_pr_debug(current_params->log_file, "Received frame on LBR session, %ld bytes.\n", numbytes);
+            oam_pr_debug(current_params, "Received frame on LBR session, %ld bytes.\n", numbytes);
             
             /* If frame has a tag, it is not for us */
             if (oam_is_frame_tagged(&recv_hdr, NULL) == true)
@@ -786,7 +787,7 @@ void *oam_session_run_lbr(void *args)
 
             /* Check MEG level*/
             if (((lbr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
-                oam_pr_debug(current_params->log_file, "Ignoring LBM with different MEG level: %d != %d\n", ((lbr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                oam_pr_debug(current_params, "Ignoring LBM with different MEG level: %d != %d\n", ((lbr_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
                             current_session.meg_level);
                 continue;
             }
@@ -816,7 +817,7 @@ void *oam_session_run_lbr(void *args)
 
             /* Send frame on wire */
             if (libnet_write(l) == -1) {
-                oam_pr_error(current_params->log_file, "Write error: %s\n", libnet_geterror(l));
+                oam_pr_error(current_params, "Write error: %s\n", libnet_geterror(l));
                 continue;
             }
         }

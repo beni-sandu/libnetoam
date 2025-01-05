@@ -22,6 +22,7 @@ Supported parameters for a LBM session
 - log_file - Path to a log file that can be used to store log messages
 - dei - Drop eligible indicator (from 802.1q header)
 - is_multicast - Flag used to configure an ETH-LB multicast session
+- enable_console_logs - If enabled, print messages to console too
 
 Supported parameters for a LBR session
 --------------------------------------
@@ -29,6 +30,7 @@ Supported parameters for a LBR session
 - meg_level - Maintenance entity group level
 - log_file - Path to log file used to store log/error info
 - net_ns - Network namespace
+- enable_console_logs - If enabled, print messages to console too
 
 Example of a parameter structure for a LBM session:
 

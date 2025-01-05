@@ -30,6 +30,7 @@ struct oam_lb_session_params {
     bool dei;                                                   /* Drop eligible indicator */
     char log_file[MAX_PATH];
     bool is_multicast;                                          /* Flag for multicast sessions */
+    bool enable_console_logs;                                   /* Output log messages to console too */
 };
 
 struct oam_lb_session {
@@ -53,6 +54,7 @@ struct oam_lb_session {
     bool custom_vlan;
     struct oam_lb_session_params *current_params;
     bool is_if_tagged;                                          /* Flag describing if session is started on a VLAN */
+    bool enable_console_logs;                                   /* Output log messages to console too */
 };
 
 /* Data passed to per session timer */
