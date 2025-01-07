@@ -31,6 +31,7 @@ struct oam_lb_session_params {
     char log_file[MAX_PATH];
     bool is_multicast;                                          /* Flag for multicast sessions */
     bool enable_console_logs;                                   /* Output log messages to console too */
+    bool log_utc;                                               /* Output log messages in UTC timezone */
 };
 
 struct oam_lb_session {
@@ -52,6 +53,7 @@ struct oam_lb_session {
     bool custom_vlan;
     bool is_if_tagged;                                          /* Flag describing if session is started on a VLAN */
     bool enable_console_logs;                                   /* Output log messages to console too */
+    bool log_utc;                                               /* Output log messages in UTC timezone */
 };
 
 /* Data passed to per session timer */

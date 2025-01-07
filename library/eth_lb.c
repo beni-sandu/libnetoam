@@ -116,6 +116,7 @@ void *oam_session_run_lbm(void *args)
     current_session.sockfd = 0;
     current_session.is_if_tagged = false;
     current_session.enable_console_logs = current_params->enable_console_logs;
+    current_session.log_utc = current_params->log_utc;
 
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
@@ -618,7 +619,7 @@ void *oam_session_run_lbr(void *args)
     current_session.l = NULL;
     current_session.sockfd = 0;
     current_session.enable_console_logs = current_params->enable_console_logs;
-
+    current_session.log_utc = current_params->log_utc;
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
 

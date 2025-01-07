@@ -23,6 +23,7 @@ Supported parameters for a LBM session
 - dei - Drop eligible indicator (from 802.1q header)
 - is_multicast - Flag used to configure an ETH-LB multicast session
 - enable_console_logs - If enabled, print messages to console too
+- log_utc - If enabled, print log messages in UTC timezone
 
 Supported parameters for a LBR session
 --------------------------------------
@@ -31,7 +32,7 @@ Supported parameters for a LBR session
 - log_file - Path to log file used to store log/error info
 - net_ns - Network namespace
 - enable_console_logs - If enabled, print messages to console too
-
+- log_utc - If enabled, print log messages in UTC timezone
 Example of a parameter structure for a LBM session:
 
 ```c

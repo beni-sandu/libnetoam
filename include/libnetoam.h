@@ -24,12 +24,16 @@ extern "C" {
 #ifdef DEBUG_ENABLE
 #define oam_pr_debug(param_ptr, ...) \
     ({ \
-    oam_pr_log(((struct oam_lb_session_params *)param_ptr)->log_file, "[DEBUG] "__VA_ARGS__); \
     if (param_ptr == NULL) \
         printf("[DEBUG] "__VA_ARGS__); \
-    else \
+    else {\
+        if (((struct oam_lb_session_params *)param_ptr)->log_utc == true) \
+            oam_pr_log_utc(((struct oam_lb_session_params *)param_ptr)->log_file, "[DEBUG] "__VA_ARGS__); \
+        else \
+            oam_pr_log(((struct oam_lb_session_params *)param_ptr)->log_file, "[DEBUG] "__VA_ARGS__); \
         if (((struct oam_lb_session_params *)param_ptr)->enable_console_logs == true) \
             printf("[DEBUG] "__VA_ARGS__); \
+    } \
     })
 #else
 #define oam_pr_debug(...) \
@@ -38,22 +42,30 @@ extern "C" {
 
 #define oam_pr_info(param_ptr, ...) \
     ({ \
-    oam_pr_log(((struct oam_lb_session_params *)param_ptr)->log_file, "[INFO] "__VA_ARGS__); \
     if (param_ptr == NULL) \
         printf("[INFO] "__VA_ARGS__); \
-    else \
+    else {\
+        if (((struct oam_lb_session_params *)param_ptr)->log_utc == true) \
+            oam_pr_log_utc(((struct oam_lb_session_params *)param_ptr)->log_file, "[INFO] "__VA_ARGS__); \
+        else \
+            oam_pr_log(((struct oam_lb_session_params *)param_ptr)->log_file, "[INFO] "__VA_ARGS__); \
         if (((struct oam_lb_session_params *)param_ptr)->enable_console_logs == true) \
             printf("[INFO] "__VA_ARGS__); \
+    } \
     })
 
 #define oam_pr_error(param_ptr, ...) \
     ({ \
-    oam_pr_log(((struct oam_lb_session_params *)param_ptr)->log_file, "[ERROR] "__VA_ARGS__); \
     if (param_ptr == NULL) \
         fprintf(stderr, "[ERROR] "__VA_ARGS__); \
-    else \
+    else {\
+        if (((struct oam_lb_session_params *)param_ptr)->log_utc == true) \
+            oam_pr_log_utc(((struct oam_lb_session_params *)param_ptr)->log_file, "[ERROR] "__VA_ARGS__); \
+        else \
+            oam_pr_log(((struct oam_lb_session_params *)param_ptr)->log_file, "[ERROR] "__VA_ARGS__); \
         if (((struct oam_lb_session_params *)param_ptr)->enable_console_logs == true) \
             fprintf(stderr, "[ERROR] "__VA_ARGS__); \
+    } \
     })
 
 /* Library interfaces */
@@ -64,7 +76,8 @@ int oam_get_eth_mac(char *if_name, uint8_t *mac_addr);
 int oam_hwaddr_str2bin(char *mac, uint8_t *addr);
 int oam_is_eth_vlan(char *if_name);
 bool oam_is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf);
-void oam_pr_log(char *log_file, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
+void oam_pr_log(char *log_file, const char *format, ...) __attribute__ ((format (printf, 2, 3)));
+void oam_pr_log_utc(char *log_file, const char *format, ...) __attribute__ ((format (printf, 2, 3)));
 
 #ifdef __cplusplus
 }
