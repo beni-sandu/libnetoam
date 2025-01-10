@@ -33,11 +33,13 @@ oam_session_id oam_session_start(void *params, enum oam_session_type session_typ
             ret = pthread_create(&session_id, NULL, oam_session_run_lbr, (void *)&new_thread);
             break;
         default:
-            oam_pr_error(NULL, "Invalid OAM session type.\n");
+            oam_pr_log(((struct oam_lb_session_params *)params)->log_file, "[ERROR] [%s: %d]: Invalid OAM session type.\n", __FILE__, __LINE__);
+            oam_pr_error(NULL, "[%s: %d]: Invalid OAM session type.\n", __FILE__, __LINE__);
     }
 
     if (ret) {
-        oam_pr_error(NULL, "oam_session_start, err: %d\n", ret);
+        oam_pr_log(((struct oam_lb_session_params *)params)->log_file, "[ERROR] [%s:%d]: oam_session_start, err: %d.\n", __FILE__, __LINE__, ret);
+        oam_pr_error(NULL, "[%s: %d]: oam_session_start, err: %d.\n", __FILE__, __LINE__, ret);
         return -1;
     }
 

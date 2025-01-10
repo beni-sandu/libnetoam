@@ -52,8 +52,7 @@ struct oam_lb_session {
     uint8_t meg_level;
     bool custom_vlan;
     bool is_if_tagged;                                          /* Flag describing if session is started on a VLAN */
-    bool enable_console_logs;                                   /* Output log messages to console too */
-    bool log_utc;                                               /* Output log messages in UTC timezone */
+    struct oam_lb_session_params *current_params;               /* Pointer to session parameters */
 };
 
 /* Data passed to per session timer */

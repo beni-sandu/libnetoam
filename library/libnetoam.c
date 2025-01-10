@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <ifaddrs.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <net/ethernet.h>
@@ -34,7 +33,7 @@ static int hex2bin(char ch)
 	ch = tolower(ch);
 	if ((ch >= 'a') && (ch <= 'f'))
 		return ch - 'a' + 10;
-	return EXIT_FAILURE;
+	return -1;
 }
 
 int oam_hwaddr_str2bin(char *mac, uint8_t *addr)
@@ -46,27 +45,27 @@ int oam_hwaddr_str2bin(char *mac, uint8_t *addr)
 
 		a = hex2bin(*mac++);
 		if (a < 0)
-			return EXIT_FAILURE;
+			return -1;
 		b = hex2bin(*mac++);
 		if (b < 0)
-			return EXIT_FAILURE;
+			return -1;
 		*addr++ = (a << 4) | b;
 		if (i < ETH_ALEN - 1 && *mac++ != ':')
-			return EXIT_FAILURE;
+			return -1;
 	}
 
-	return EXIT_SUCCESS;
+	return 0;
 }
 
-int oam_get_eth_mac(char *if_name, uint8_t *mac_addr)
+int oam_get_eth_mac(char *if_name, uint8_t *mac_addr, struct oam_lb_session *oam_session)
 {
     struct ifaddrs *addrs, *ifp;
     struct sockaddr_ll *sa;
 
     /* Get a list of network interfaces on the system */
     if (getifaddrs(&addrs) == -1) {
-        oam_pr_error(NULL, "getifaddrs.\n");
-        return EXIT_FAILURE;
+        oam_pr_error(oam_session->current_params, "[%s:%d]: getifaddrs: %s.\n", __FILE__, __LINE__, oam_perror());
+        return -1;
     }
 
     /* Walk through the list and get the MAC of our interface */
@@ -83,18 +82,18 @@ int oam_get_eth_mac(char *if_name, uint8_t *mac_addr)
             }
 
             freeifaddrs(addrs);
-            return EXIT_SUCCESS;
+            return 0;
         }
         ifp = ifp->ifa_next;
     }
 
     /* The provided interface is not present on the machine */
     freeifaddrs(addrs);
-    return EXIT_FAILURE;
+    return -1;
 }
 
 /* Returns 0 if interface is VLAN, 1 if not and -1 on error */
-int oam_is_eth_vlan(char *if_name)
+int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
 {
 #define RECV_BUFSIZE (4096)
 
@@ -125,13 +124,13 @@ int oam_is_eth_vlan(char *if_name)
     /* Create a netlink route socket */
     int sfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sfd < 0) {
-        oam_pr_error(NULL, "Cannot create NL socket.\n");
+        oam_pr_error(oam_session->current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror());
         return -1;
     }
 
     /* Send the request to kernel */
     if (sendmsg(sfd, &msg, 0) < 0) {
-        oam_pr_error(NULL, "Error sending NL request to kernel.\n");
+        oam_pr_error(oam_session->current_params, "[%s:%d]: sendmsg: %s.\n", __FILE__, __LINE__, oam_perror());
         close(sfd);
         return -1;
     }
@@ -145,7 +144,7 @@ int oam_is_eth_vlan(char *if_name)
     while (1) {
         int len = recvmsg(sfd, &msg, 0);
         if (len < 0) {
-            oam_pr_error(NULL, "Error reading NL reply from kernel.\n");
+            oam_pr_error(oam_session->current_params, "[%s:%d]: recvmsg: %s.\n", __FILE__, __LINE__, oam_perror());
             close(sfd);
             return -1;
         }
@@ -158,14 +157,16 @@ int oam_is_eth_vlan(char *if_name)
 
             /* End of multipart message, interface not found */
             if (nh->nlmsg_type == NLMSG_DONE) {
-                oam_pr_error(NULL, "Interface not found for NL reply.\n");
+                oam_pr_error(oam_session->current_params, "[%s:%d]: Interface %s not found for NL reply.\n",
+                    __FILE__, __LINE__, if_name);
                 close(sfd);
                 return -1;
             }
 
             /* Error reading message */
             if (nh->nlmsg_type ==  NLMSG_ERROR) {
-                oam_pr_error(NULL, "Error reading NL message from kernel.\n");
+                oam_pr_error(oam_session->current_params, "[%s:%d]: Error reading NL message from kernel.\n",
+                    __FILE__, __LINE__);
                 close(sfd);
                 return -1;
             }
@@ -253,7 +254,7 @@ void oam_pr_log(char *log_file, const char *format, ...)
         file = fopen(log_file, "a");
 
         if (file == NULL) {
-            perror("fopen");
+            fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror());
             return;
         }
     }
@@ -291,7 +292,7 @@ void oam_pr_log_utc(char *log_file, const char *format, ...)
         file = fopen(log_file, "a");
 
         if (file == NULL) {
-            perror("fopen");
+            fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror());
             return;
         }
     }
@@ -310,6 +311,14 @@ void oam_pr_log_utc(char *log_file, const char *format, ...)
     vfprintf(file, format, arg);
     va_end(arg);
     fclose(file);
+}
+
+/* GNU style thread-safe perror */
+char *oam_perror(void)
+{
+    char dummy_buf[1];
+
+    return strerror_r(errno, dummy_buf, 1);
 }
 
 /* Return library version */
