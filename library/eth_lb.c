@@ -159,7 +159,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Configure network namespace */
     if (strlen(current_params->net_ns) != 0) {
-        strcat(ns_buf, current_params->net_ns);
+        snprintf(ns_buf + strlen(ns_buf), MAX_PATH - strlen(ns_buf), "%s", current_params->net_ns);
 
         ns_fd = open(ns_buf, O_RDONLY);
 
@@ -660,7 +660,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Configure network namespace */
     if (strlen(current_params->net_ns) != 0) {
-        strcat(ns_buf, current_params->net_ns);
+        snprintf(ns_buf + strlen(ns_buf), MAX_PATH - strlen(ns_buf), "%s", current_params->net_ns);
 
         ns_fd = open(ns_buf, O_RDONLY);
 
