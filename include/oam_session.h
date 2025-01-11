@@ -26,7 +26,7 @@ struct oam_session_thread {
 
 struct cb_status {
     int cb_ret;                                                 /* Callback return value */
-    struct oam_lb_session_params *session_params;                  /* Pointer to current session parameters */
+    struct oam_lb_session_params *session_params;               /* Pointer to current session parameters */
 };
 
 enum oam_cb_ret {

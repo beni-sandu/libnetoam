@@ -1,4 +1,4 @@
-#include "../include/libnetoam.h"
+#include "oam_test.h"
 
 int main(void)
 {
