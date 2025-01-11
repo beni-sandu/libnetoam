@@ -8,13 +8,6 @@
 #define _OAM_FRAME_H
 
 #include <stdint.h>
-#include <net/ethernet.h>
-#include <libnet.h>
-#include <pthread.h>
-
-#include "oam_session.h"
-#include "eth_lb.h"
-#include "libnetoam.h"
 
 /*
  * OAM OpCodes
@@ -84,24 +77,8 @@ struct oam_common_header {
 	uint8_t tlv_offset;
 } __attribute__((__packed__));
 
-/* The rest of the PDU is protocol specific, we only implement ETH-LB for the moment (MAC ping) */
-
-/*
- * ETH-LB PDU is similar for both LBM/LBR frames.
- *
- * There is an optional TLV that could be filled between transaction ID and end tlv,
- * that we currently don't include.
- */
-struct oam_lb_pdu {
-	struct oam_common_header oam_header;
-	uint32_t transaction_id;
-	struct oam_sender_id_tlv sender_id;
-	uint8_t end_tlv;
-} __attribute__((__packed__));
-
 /* Prototypes */
 void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
 		uint8_t tlv_offset, struct oam_common_header *header);
-void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame);
 
 #endif //_OAM_FRAME_H
