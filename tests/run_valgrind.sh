@@ -1,5 +1,13 @@
 #!/bin/bash
 
+SCRIPT_PATH=$(dirname $0)
+
+# Check if valgrind binary exists
+if ! which valgrind &> /dev/null; then
+    echo "Error: valgrind is not installed or not in PATH."
+    exit 1
+fi
+
 # Set up 4 veth interfaces and vlans
 ip link del dev veth0 2>/dev/null || :
 ip link del dev veth1 2>/dev/null || :
@@ -25,13 +33,16 @@ sleep 2
 
 export LD_LIBRARY_PATH="../build"
 
+#--show-leak-kinds=all
+
 # Run all tests from directory
-tests=$(find * -type f -name 'test_*' ! -name 'test_valgrind')
+tests=test_valgrind
 
 for f in $tests
 do
     if test -x ./"$f"; then
-        if ./"$f" > ./"$f".out 2> ./"$f".err; then
+        valgrind --suppressions=${SCRIPT_PATH}/glibc.supp --show-error-list=yes --leak-check=full --track-origins=yes --error-exitcode=1 ./"$f" > ./"$f".out 2> ./"$f".err
+        if [ $? -eq 0 ]; then
             echo "PASS: $f"
         else
             echo "FAIL: $f"
@@ -39,7 +50,7 @@ do
     fi
 done
 
-# When done, delete the peers
+# When done, remove the peers
 ip link del dev veth0 2>/dev/null || :
 ip link del dev veth1 2>/dev/null || :
 ip link del dev veth2 2>/dev/null || :

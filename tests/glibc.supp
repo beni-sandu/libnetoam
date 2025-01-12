@@ -1,0 +1,44 @@
+{
+   pthread_create
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   fun:calloc
+   fun:allocate_dtv
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create*
+   fun:oam_session_start
+}
+
+{
+   __timer_start_helper_thread
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   fun:calloc
+   fun:allocate_dtv
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create*
+   fun:__timer_start_helper_thread
+   fun:__pthread_once_slow
+   fun:timer_create*
+   fun:oam_session_run_lbm
+   fun:start_thread
+   fun:clone
+}
+
+{
+   timer_helper_thread
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   fun:calloc
+   fun:allocate_dtv
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create*
+   fun:timer_helper_thread
+   fun:start_thread
+}

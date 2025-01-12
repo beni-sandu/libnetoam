@@ -69,6 +69,10 @@ test-run: test
 	$(Q)cd $(TESTDIR) ; \
 	./run.sh
 
+test-run-valgrind: test
+	$(Q)cd $(TESTDIR) ; \
+	./run_valgrind.sh
+
 clean:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
 	$(Q)$(MAKE) -s -C $(TESTDIR) clean
