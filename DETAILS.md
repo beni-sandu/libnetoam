@@ -33,6 +33,7 @@ Supported parameters for a LBR session
 - net_ns - Network namespace
 - enable_console_logs - If enabled, print messages to console too
 - log_utc - If enabled, print log messages in UTC timezone
+
 Example of a parameter structure for a LBM session:
 
 ```c

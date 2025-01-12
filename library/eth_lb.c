@@ -187,7 +187,7 @@ void *oam_session_run_lbm(void *args)
         libnet_errbuf);                             /* error buffer */
 
     if (l == NULL) {
-        oam_pr_error(current_params, "[%s:%d]: libnet_init() failed: %s.\n", __FILE__, __LINE__, libnet_errbuf);
+        oam_pr_error(current_params, "[%s:%d]: libnet_init() failed: %s", __FILE__, __LINE__, libnet_errbuf);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -456,13 +456,13 @@ void *oam_session_run_lbm(void *args)
                 }
 
                 if (eth_ptag == -1) {
-                    oam_pr_error(current_params, "[%s:%d]: Can't build LBM frame: %s\n", __FILE__, __LINE__, libnet_geterror(l));
+                    oam_pr_error(current_params, "[%s:%d]: Can't build LBM frame: %s", __FILE__, __LINE__, libnet_geterror(l));
                     current_session.send_next_frame = false;
                     continue;
                 }
 
                 if (libnet_write(l) == -1) {
-                    oam_pr_error(current_params, "[%s:%d] libnet_write: %s\n", __FILE__, __LINE__, libnet_geterror(l));
+                    oam_pr_error(current_params, "[%s:%d] libnet_write: %s", __FILE__, __LINE__, libnet_geterror(l));
                     current_session.send_next_frame = false;
                     continue;
                 }
@@ -688,7 +688,7 @@ void *oam_session_run_lbr(void *args)
         libnet_errbuf);                             /* error buffer */
 
     if (l == NULL) {
-        oam_pr_error(current_params, "[%s:%d]: libnet_init() failed: %s\n", __FILE__, __LINE__, libnet_errbuf);
+        oam_pr_error(current_params, "[%s:%d]: libnet_init() failed: %s", __FILE__, __LINE__, libnet_errbuf);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -822,7 +822,7 @@ void *oam_session_run_lbr(void *args)
 
             /* Send frame on wire */
             if (libnet_write(l) == -1) {
-                oam_pr_error(current_params, "[%s:%d]: libnet_write: %s.\n", __FILE__, __LINE__, libnet_geterror(l));
+                oam_pr_error(current_params, "[%s:%d]: libnet_write: %s", __FILE__, __LINE__, libnet_geterror(l));
                 continue;
             }
         }
