@@ -64,7 +64,7 @@ int oam_get_eth_mac(char *if_name, uint8_t *mac_addr, struct oam_lb_session *oam
 
     /* Get a list of network interfaces on the system */
     if (getifaddrs(&addrs) == -1) {
-        oam_pr_error(oam_session->current_params, "[%s:%d]: getifaddrs: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(oam_session->current_params, "[%s:%d]: getifaddrs: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         return -1;
     }
 
@@ -124,13 +124,13 @@ int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
     /* Create a netlink route socket */
     int sfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sfd < 0) {
-        oam_pr_error(oam_session->current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(oam_session->current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         return -1;
     }
 
     /* Send the request to kernel */
     if (sendmsg(sfd, &msg, 0) < 0) {
-        oam_pr_error(oam_session->current_params, "[%s:%d]: sendmsg: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(oam_session->current_params, "[%s:%d]: sendmsg: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         close(sfd);
         return -1;
     }
@@ -144,7 +144,7 @@ int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
     while (1) {
         int len = recvmsg(sfd, &msg, 0);
         if (len < 0) {
-            oam_pr_error(oam_session->current_params, "[%s:%d]: recvmsg: %s.\n", __FILE__, __LINE__, oam_perror());
+            oam_pr_error(oam_session->current_params, "[%s:%d]: recvmsg: %s.\n", __FILE__, __LINE__, oam_perror(errno));
             close(sfd);
             return -1;
         }
@@ -254,7 +254,7 @@ void oam_pr_log(char *log_file, const char *format, ...)
         file = fopen(log_file, "a");
 
         if (file == NULL) {
-            fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror());
+            fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror(errno));
             return;
         }
     }
@@ -292,7 +292,7 @@ void oam_pr_log_utc(char *log_file, const char *format, ...)
         file = fopen(log_file, "a");
 
         if (file == NULL) {
-            fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror());
+            fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror(errno));
             return;
         }
     }
@@ -314,11 +314,11 @@ void oam_pr_log_utc(char *log_file, const char *format, ...)
 }
 
 /* GNU style thread-safe perror */
-char *oam_perror(void)
+char *oam_perror(int error)
 {
     char dummy_buf[1];
 
-    return strerror_r(errno, dummy_buf, 1);
+    return strerror_r(error, dummy_buf, 1);
 }
 
 /* Return library version */

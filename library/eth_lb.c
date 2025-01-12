@@ -57,7 +57,7 @@ static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeo
     ret = ppoll(fds, 1, &ts, NULL);
 
     if (ret == -1) {
-        oam_pr_error(oam_session->current_params,"[%s:%d]: ppoll: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(oam_session->current_params,"[%s:%d]: ppoll: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         return -1;
     } else if (ret == 0) {
         return -2; //timeout expired
@@ -132,14 +132,14 @@ void *oam_session_run_lbm(void *args)
     /* Check for CAP_NET_RAW capability */
     caps = cap_get_proc();
     if (caps == NULL) {
-        oam_pr_error(current_params, "[%s:%d]: cap_get_proc: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: cap_get_proc: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
     if (cap_get_flag(caps, CAP_NET_RAW, CAP_EFFECTIVE, &cap_val) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: cap_get_flag: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: cap_get_flag: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         cap_free(caps);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -164,14 +164,14 @@ void *oam_session_run_lbm(void *args)
         ns_fd = open(ns_buf, O_RDONLY);
 
         if (ns_fd == -1) {
-            oam_pr_error(current_params, "[%s:%d]: open ns fd: %s.\n", __FILE__, __LINE__, oam_perror());
+            oam_pr_error(current_params, "[%s:%d]: open ns fd: %s.\n", __FILE__, __LINE__, oam_perror(errno));
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
             pthread_exit(NULL);
         }
 
         if (setns(ns_fd, CLONE_NEWNET) == -1) {
-            oam_pr_error(current_params, "[%s:%d] setns: %s.\n", __FILE__, __LINE__, oam_perror());
+            oam_pr_error(current_params, "[%s:%d] setns: %s.\n", __FILE__, __LINE__, oam_perror(errno));
             close(ns_fd);
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
@@ -304,7 +304,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Create TX timer */
     if (timer_create(CLOCK_MONOTONIC, &tx_sev, &(tx_timer.timer_id)) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: timer_create: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: timer_create: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -316,7 +316,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Create a raw socket for incoming frames */
     if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -327,7 +327,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Enable packet auxdata */
     if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
-        oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -336,7 +336,7 @@ void *oam_session_run_lbm(void *args)
     /* Get interface index */
     if_index = if_nametoindex(current_params->if_name);
     if (if_index == 0) {
-        oam_pr_error(current_params, "[%s:%d]: if_nametoindex: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: if_nametoindex: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -350,7 +350,7 @@ void *oam_session_run_lbm(void *args)
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -361,7 +361,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Start timer */
     if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: timer_settime: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: timer_settime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -469,7 +469,7 @@ void *oam_session_run_lbm(void *args)
 
                 /* Get aprox timestamp of sent frame */
                 if (clock_gettime(CLOCK_MONOTONIC, &(current_session.time_sent)) == -1) {
-                    oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror());
+                    oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
                     current_thread->ret = -1;
                     sem_post(&current_thread->sem);
                     pthread_exit(NULL);
@@ -490,7 +490,7 @@ void *oam_session_run_lbm(void *args)
 
                 /* Get aprox timestamp of received frame */
                 if (clock_gettime(CLOCK_MONOTONIC, &current_session.time_received) == -1) {
-                    oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror());
+                    oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
                     current_thread->ret = -1;
                     sem_post(&current_thread->sem);
                     pthread_exit(NULL);
@@ -633,14 +633,14 @@ void *oam_session_run_lbr(void *args)
     /* Check for CAP_NET_RAW capability */
     caps = cap_get_proc();
     if (caps == NULL) {
-        oam_pr_error(current_params, "[%s:%d]: cap_get_proc: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: cap_get_proc: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
     if (cap_get_flag(caps, CAP_NET_RAW, CAP_EFFECTIVE, &cap_val) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: cap_get_flag: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: cap_get_flag: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         cap_free(caps);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -665,14 +665,14 @@ void *oam_session_run_lbr(void *args)
         ns_fd = open(ns_buf, O_RDONLY);
 
         if (ns_fd == -1) {
-            oam_pr_error(current_params, "[%s:%d]: open ns fd: %s.\n", __FILE__, __LINE__, oam_perror());
+            oam_pr_error(current_params, "[%s:%d]: open ns fd: %s.\n", __FILE__, __LINE__, oam_perror(errno));
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
             pthread_exit(NULL);
         }
 
         if (setns(ns_fd, CLONE_NEWNET) == -1) {
-            oam_pr_error(current_params, "[%s:%d] setns: %s.\n", __FILE__, __LINE__, oam_perror());
+            oam_pr_error(current_params, "[%s:%d] setns: %s.\n", __FILE__, __LINE__, oam_perror(errno));
             close(ns_fd);
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
@@ -707,7 +707,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Create a raw socket for incoming frames */
     if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -718,7 +718,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Enable packet auxdata */
     if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
-        oam_pr_error(current_params, "[%s:%d] setsockopt: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d] setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -727,7 +727,7 @@ void *oam_session_run_lbr(void *args)
     /* Get interface index */
     if_index = if_nametoindex(current_params->if_name);
     if (if_index == 0) {
-        oam_pr_error(current_params, "[%s:%d]: if_nametoindex: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: if_nametoindex: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -741,7 +741,7 @@ void *oam_session_run_lbr(void *args)
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror());
+        oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);

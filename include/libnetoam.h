@@ -78,7 +78,7 @@ int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session);
 bool oam_is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf);
 void oam_pr_log(char *log_file, const char *format, ...) __attribute__ ((format (printf, 2, 3)));
 void oam_pr_log_utc(char *log_file, const char *format, ...) __attribute__ ((format (printf, 2, 3)));
-char *oam_perror(void);
+char *oam_perror(int error);
 
 #ifdef __cplusplus
 }

@@ -16,8 +16,8 @@
  */
 oam_session_id oam_session_start(void *params, enum oam_session_type session_type)
 {    
-    pthread_t session_id;
-    int ret = 0;
+    pthread_t session_id = -1;
+    int ret = 1;
     struct oam_session_thread new_thread;
 
     new_thread.session_params = params;
@@ -33,17 +33,21 @@ oam_session_id oam_session_start(void *params, enum oam_session_type session_typ
             ret = pthread_create(&session_id, NULL, oam_session_run_lbr, (void *)&new_thread);
             break;
         default:
-            oam_pr_log(((struct oam_lb_session_params *)params)->log_file, "[ERROR] [%s: %d]: Invalid OAM session type.\n", __FILE__, __LINE__);
-            oam_pr_error(NULL, "[%s: %d]: Invalid OAM session type.\n", __FILE__, __LINE__);
+            oam_pr_log(((struct oam_lb_session_params *)params)->log_file, "[ERROR] [%s:%d]: Invalid OAM session type.\n", __FILE__, __LINE__);
+            oam_pr_error(NULL, "[%s:%d]: Invalid OAM session type.\n", __FILE__, __LINE__);
     }
 
-    if (ret) {
-        oam_pr_log(((struct oam_lb_session_params *)params)->log_file, "[ERROR] [%s:%d]: oam_session_start, err: %d.\n", __FILE__, __LINE__, ret);
-        oam_pr_error(NULL, "[%s: %d]: oam_session_start, err: %d.\n", __FILE__, __LINE__, ret);
+    if (ret < 0) {
+        oam_pr_log(((struct oam_lb_session_params *)params)->log_file, "[ERROR] [%s:%d]: pthread_create: %s.\n", __FILE__, __LINE__, oam_perror(ret));
+        oam_pr_error(NULL, "[%s:%d]: pthread_create: %s.\n", __FILE__, __LINE__, oam_perror(ret));
         return -1;
     }
 
-    sem_wait(&new_thread.sem);
+    if (ret == 0)
+        sem_wait(&new_thread.sem);
+
+    /* Clean up semaphore */
+    sem_destroy(&new_thread.sem);
 
     if (new_thread.ret != 0)
         return new_thread.ret;
