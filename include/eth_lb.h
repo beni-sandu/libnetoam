@@ -13,7 +13,6 @@
 
 #include "oam_frame.h"
 
-#define IF_NAME_SIZE    (32U)
 #define NET_NS_SIZE     (32U)
 #define MAX_PATH        (512U)
 #define ETH_STR_LEN     (18U)
@@ -33,7 +32,7 @@ struct oam_lb_pdu {
 
 /* ETH-LB session parameters */
 struct oam_lb_session_params {
-    char if_name[IF_NAME_SIZE];                                 /* Network interface name */
+    char if_name[IFNAMSIZ];                                     /* Network interface name */
     char dst_mac[ETH_STR_LEN];                                  /* Destination MAC address in string format */
     uint32_t interval_ms;                                       /* Ping interval in miliseconds */
     uint32_t missed_consecutive_ping_threshold;                 /* Counter for consecutive missed pings */
