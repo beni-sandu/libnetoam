@@ -53,7 +53,8 @@ struct oam_lb_session_params {
 /* ETH-LB session data */
 struct oam_lb_session {
     uint32_t transaction_id;                                    /* Transaction identifier */
-    int sockfd;                                                 /* Socket file descriptor */
+    int rx_sockfd;                                              /* RX socket file descriptor */
+    int tx_sockfd;                                              /* TX socket file descriptor */
     struct timespec time_sent;                                  /* Time when the frame was sent */
     struct timespec time_received;                              /* Time when the frame was received */
     bool is_session_configured;                                 /* Flag for session configuration */

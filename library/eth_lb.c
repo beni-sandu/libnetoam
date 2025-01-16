@@ -28,8 +28,8 @@ static __thread libnet_t *l;                                       /* libnet con
 static __thread char libnet_errbuf[LIBNET_ERRBUF_SIZE];            /* libnet error buffer */
 static __thread struct oam_lbm_timer tx_timer;                     /* TX timer */
 static __thread struct oam_lb_pdu lb_frame;
-static __thread int sockfd;                                        /* RX socket file descriptor */
-static __thread struct sockaddr_ll sll;                            /* RX socket address */
+static __thread struct sockaddr_ll rx_sll;                         /* RX socket address */
+static __thread struct sockaddr_ll tx_sll;                         /* TX socket address */
 static __thread ssize_t numbytes;                                  /* Number of bytes received */
 static __thread struct cb_status callback_status;
 static __thread uint32_t lbm_missed_pings;
@@ -126,7 +126,8 @@ void *oam_session_run_lbm(void *args)
     current_session.meg_level = current_params->meg_level;
     current_session.custom_vlan = false;
     current_session.l = NULL;
-    current_session.sockfd = 0;
+    current_session.rx_sockfd = -1;
+    current_session.tx_sockfd = -1;
     current_session.is_if_tagged = false;
     current_session.current_params = current_params;
 
@@ -330,18 +331,15 @@ void *oam_session_run_lbm(void *args)
     oam_pr_debug(current_params, "TX timer ID: %p\n", tx_timer.timer_id);
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
+    if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
         oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
-    /* Store the sockfd so we can close it from the cleanup handler */
-    current_session.sockfd = sockfd;
-
     /* Enable packet auxdata */
-    if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
+    if (setsockopt(current_session.rx_sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
         oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -358,13 +356,13 @@ void *oam_session_run_lbm(void *args)
     }
 
     /* Setup socket address */
-    memset(&sll, 0, sizeof(struct sockaddr_ll));
-    sll.sll_family = AF_PACKET;
-    sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETH_P_ALL);
+    memset(&rx_sll, 0, sizeof(struct sockaddr_ll));
+    rx_sll.sll_family = AF_PACKET;
+    rx_sll.sll_ifindex = if_index;
+    rx_sll.sll_protocol = htons(ETH_P_ALL);
     
     /* Bind it */
-    if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
+    if (bind(current_session.rx_sockfd, (struct sockaddr *)&rx_sll, sizeof(rx_sll)) == -1) {
         oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -372,7 +370,7 @@ void *oam_session_run_lbm(void *args)
     }
 
     /* Attach filter */
-    if (setsockopt(sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_program, sizeof(bpf_program)) < 0) {
+    if (setsockopt(current_session.rx_sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_program, sizeof(bpf_program)) < 0) {
         oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -514,7 +512,7 @@ void *oam_session_run_lbm(void *args)
         while (true && (current_session.send_next_frame != true)) {
             
             /* Check for incoming data */
-            if (recvmsg_ppoll(sockfd, &recv_hdr, current_session.interval_ms, &current_session) > 0) {
+            if (recvmsg_ppoll(current_session.rx_sockfd, &recv_hdr, current_session.interval_ms, &current_session) > 0) {
 
                 /* Get aprox timestamp of received frame */
                 if (clock_gettime(CLOCK_MONOTONIC, &current_session.time_received) == -1) {
@@ -665,7 +663,7 @@ void *oam_session_run_lbr(void *args)
     memset(&current_session, 0, sizeof(current_session));
     current_session.meg_level = current_params->meg_level;
     current_session.l = NULL;
-    current_session.sockfd = 0;
+    current_session.rx_sockfd = -1;
     current_session.current_params = current_params;
 
     /* Install session cleanup handler */
@@ -747,18 +745,15 @@ void *oam_session_run_lbr(void *args)
     current_session.l = l;
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
+    if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
         oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
-    /* Copy socket fd */
-    current_session.sockfd = sockfd;
-
     /* Enable packet auxdata */
-    if (setsockopt(sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
+    if (setsockopt(current_session.rx_sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
         oam_pr_error(current_params, "[%s:%d] setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -775,13 +770,13 @@ void *oam_session_run_lbr(void *args)
     }
 
     /* Setup socket address */
-    memset(&sll, 0, sizeof(struct sockaddr_ll));
-    sll.sll_family = AF_PACKET;
-    sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETH_P_ALL);
+    memset(&rx_sll, 0, sizeof(struct sockaddr_ll));
+    rx_sll.sll_family = AF_PACKET;
+    rx_sll.sll_ifindex = if_index;
+    rx_sll.sll_protocol = htons(ETH_P_ALL);
     
     /* Bind it */
-    if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
+    if (bind(current_session.rx_sockfd, (struct sockaddr *)&rx_sll, sizeof(rx_sll)) == -1) {
         oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -789,7 +784,7 @@ void *oam_session_run_lbr(void *args)
     }
 
     /* Attach filter */
-    if (setsockopt(sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_program, sizeof(bpf_program)) < 0) {
+    if (setsockopt(current_session.rx_sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_program, sizeof(bpf_program)) < 0) {
         oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -809,7 +804,7 @@ void *oam_session_run_lbr(void *args)
     while (true) {
 
         /* Wait for data on the socket */
-        numbytes = recvmsg(sockfd, &recv_hdr, 0);
+        numbytes = recvmsg(current_session.rx_sockfd, &recv_hdr, 0);
 
         /* We got something, look around */
         if (numbytes > 0) {
@@ -918,8 +913,8 @@ static void lb_session_cleanup(void *args)
         libnet_destroy(current_session->l);
     
     /* Close socket */
-    if (current_session->sockfd != 0)
-        close(current_session->sockfd);
+    if (current_session->rx_sockfd != 0)
+        close(current_session->rx_sockfd);
 
     /* 
      * If a session is not successfully configured, we don't call pthread_join on it,
