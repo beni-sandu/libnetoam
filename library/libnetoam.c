@@ -232,7 +232,6 @@ bool oam_is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_bu
                 if (aux_buf != NULL)
                     memcpy(aux_buf, auxp, sizeof(struct tpacket_auxdata));
                 return true;
-                break;
             }
 
     }
