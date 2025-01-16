@@ -95,7 +95,9 @@ int oam_get_eth_mac(char *if_name, uint8_t *mac_addr, struct oam_lb_session *oam
 /* Returns 0 if interface is VLAN, 1 if not and -1 on error */
 int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
 {
-#define RECV_BUFSIZE (4096)
+#define RECV_BUFSIZE (8192)
+
+    int sfd = -1;
 
     /* Request message */
     struct req_msq {
@@ -122,7 +124,7 @@ int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
     sa.nl_family = AF_NETLINK;
     
     /* Create a netlink route socket */
-    int sfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    sfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sfd < 0) {
         oam_pr_error(oam_session->current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         return -1;
