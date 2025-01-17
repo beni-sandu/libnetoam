@@ -33,15 +33,13 @@ sleep 2
 
 export LD_LIBRARY_PATH="../build"
 
-#--show-leak-kinds=all
-
 # Run all tests from directory
 tests=test_valgrind
 
 for f in $tests
 do
     if test -x ./"$f"; then
-        valgrind --suppressions=${SCRIPT_PATH}/glibc.supp --show-error-list=yes --leak-check=full --track-origins=yes --error-exitcode=1 ./"$f" > ./"$f".out 2> ./"$f".err
+        valgrind --suppressions=${SCRIPT_PATH}/glibc.supp --show-error-list=yes --leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1 ./"$f" > ./"$f".out 2> ./"$f".err
         if [ $? -eq 0 ]; then
             echo "PASS: $f"
         else
