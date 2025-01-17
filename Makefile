@@ -1,7 +1,7 @@
 STRICT_COMPILE = 1
 
 CFLAGS = -Wall -D_GNU_SOURCE
-LDFLAGS = -lpthread -lrt -lcap -lnet
+LDFLAGS = -lpthread -lrt -lcap
 OUTDIR = $(shell pwd)/build
 TESTDIR = tests
 SRCDIR = library
@@ -19,7 +19,7 @@ ifeq ($(DEBUG_ENABLE), 1)
 CFLAGS += -DDEBUG_ENABLE -g
 endif
 
-ifeq ($(STRICT_COMPILE),1)
+ifeq ($(STRICT_COMPILE), 1)
 CFLAGS += -O2 -W -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS += -Wmissing-declarations -Wold-style-definition -Wpointer-arith
 CFLAGS += -Wcast-align -Wnested-externs -Wcast-qual

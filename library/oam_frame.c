@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <stdint.h>
-#include <stdio.h>
 #include <arpa/inet.h>
 #include <linux/if_ether.h>
 

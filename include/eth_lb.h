@@ -7,10 +7,10 @@
 #ifndef _ETH_LB_H
 #define _ETH_LB_H
 
-#include <stdbool.h>
-#include <libnet.h>
 #include <net/ethernet.h>
+#include <net/if.h>
 #include <linux/limits.h>
+#include <stdbool.h>
 
 #include "oam_frame.h"
 
@@ -58,7 +58,6 @@ struct oam_lb_session {
     struct timespec time_sent;                                  /* Time when the frame was sent */
     struct timespec time_received;                              /* Time when the frame was received */
     bool is_session_configured;                                 /* Flag for session configuration */
-    libnet_t *l;                                                /* libnet context */
     struct oam_lbm_timer *lbm_tx_timer;                         /* Pointer to LBM tx timer */
     uint16_t vlan_id;                                           /* VLAN identifier */
     uint8_t pcp;                                                /* Frame priority level */

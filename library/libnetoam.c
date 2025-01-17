@@ -4,20 +4,19 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <sys/types.h>
-#include <ifaddrs.h>
-#include <stdio.h>
-#include <string.h>
 #include <arpa/inet.h>
-#include <net/ethernet.h>
 #include <ctype.h>
+#include <errno.h>
+#include <ifaddrs.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
-#include <time.h>
-#include <stdbool.h>
+#include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_arp.h>
+#include <stdbool.h>
 #include <stdarg.h>
+#include <sys/types.h>
+#include <time.h>
 
 #include "../include/libnetoam.h"
 

@@ -11,8 +11,12 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
 #include <linux/if_packet.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include "oam_session.h"
 #include "eth_lb.h"
