@@ -471,7 +471,6 @@ void *oam_session_run_lbm(void *args)
                 if (clock_gettime(CLOCK_MONOTONIC, &(current_session.time_sent)) == -1) {
                     oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
                     current_thread->ret = -1;
-                    sem_post(&current_thread->sem);
                     pthread_exit(NULL);
                 }
                 oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d\n", current_params->if_name,
@@ -492,7 +491,6 @@ void *oam_session_run_lbm(void *args)
                 if (clock_gettime(CLOCK_MONOTONIC, &current_session.time_received) == -1) {
                     oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
                     current_thread->ret = -1;
-                    sem_post(&current_thread->sem);
                     pthread_exit(NULL);
                 }
 
