@@ -8,6 +8,7 @@
 #define _OAM_FRAME_H
 
 #include <stdint.h>
+#include <linux/if_ether.h>
 
 /*
  * OAM OpCodes
@@ -49,7 +50,17 @@ struct oam_sender_id_tlv {
 	uint8_t chassis_id_len;
 } __attribute__((__packed__));
 
-#define ETHERTYPE_OAM 0x8902
+#define ETHERTYPE_OAM	0x8902
+
+/* Complete VLAN header */
+struct oam_vlan_header {
+	uint8_t dst_addr[ETH_ALEN];
+	uint8_t src_addr[ETH_ALEN];
+	uint16_t tpi;
+	uint16_t pcp_vid;
+#define VLAN_VIDMASK	0x0fff
+	uint16_t ether_type;
+} __attribute__((__packed__));
 
 /*
  *  Common OAM Header
@@ -80,5 +91,9 @@ struct oam_common_header {
 /* Prototypes */
 void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode opcode, uint8_t flags,
 		uint8_t tlv_offset, struct oam_common_header *header);
+void oam_build_eth_frame(uint8_t *dst_addr, uint8_t *src_addr, uint16_t type, uint8_t *payload,
+		size_t payload_s,uint8_t *frame);
+void oam_build_vlan_frame(const uint8_t *dst_addr, const uint8_t *src_addr, uint16_t tpi, uint8_t pcp, uint8_t cfi,
+        uint16_t vlan_id, uint16_t ether_type, uint8_t* payload, uint32_t payload_s, uint8_t *frame);
 
 #endif //_OAM_FRAME_H
