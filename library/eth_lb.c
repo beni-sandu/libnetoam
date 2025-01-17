@@ -330,7 +330,7 @@ void *oam_session_run_lbm(void *args)
     tx_timer.is_timer_created = true;
     oam_pr_debug(current_params, "TX timer ID: %p\n", tx_timer.timer_id);
 
-    /* Create a raw socket for incoming frames */
+    /* Create RX socket */
     if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
         oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
@@ -361,7 +361,7 @@ void *oam_session_run_lbm(void *args)
     rx_sll.sll_ifindex = if_index;
     rx_sll.sll_protocol = htons(ETH_P_ALL);
     
-    /* Bind it */
+    /* Bind RX socket */
     if (bind(current_session.rx_sockfd, (struct sockaddr *)&rx_sll, sizeof(rx_sll)) == -1) {
         oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
@@ -372,6 +372,28 @@ void *oam_session_run_lbm(void *args)
     /* Attach filter */
     if (setsockopt(current_session.rx_sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_program, sizeof(bpf_program)) < 0) {
         oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Create TX socket */
+    if ((current_session.tx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Setup RX socket address */
+    memset(&tx_sll, 0, sizeof(struct sockaddr_ll));
+    tx_sll.sll_family = AF_PACKET;
+    tx_sll.sll_ifindex = if_index;
+    tx_sll.sll_protocol = htons(ETHERTYPE_OAM);
+
+     /* Bind TX socket */
+    if (bind(current_session.tx_sockfd, (struct sockaddr *)&tx_sll, sizeof(tx_sll)) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -912,9 +934,13 @@ static void lb_session_cleanup(void *args)
     if (current_session->l != NULL)
         libnet_destroy(current_session->l);
     
-    /* Close socket */
-    if (current_session->rx_sockfd != 0)
+    /* Close RX socket */
+    if (current_session->rx_sockfd > 0)
         close(current_session->rx_sockfd);
+
+    /* Close TX socket */
+    if (current_session->tx_sockfd > 0)
+        close(current_session->tx_sockfd);
 
     /* 
      * If a session is not successfully configured, we don't call pthread_join on it,
