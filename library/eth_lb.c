@@ -84,6 +84,9 @@ void *oam_session_run_lbm(void *args)
     struct oam_lb_pdu *lbm_frame_p;
     int flag_enable = 1;
     int ret = 0;
+    size_t tx_vlan_frame_s = sizeof(struct oam_vlan_header) + sizeof(struct oam_lb_pdu);
+    size_t tx_eth_frame_s = sizeof(struct ether_header) + sizeof(struct oam_lb_pdu);
+    ssize_t sent_bytes = 0;
 
     /* Setup buffer and header structs for received packets */
     uint8_t recv_buf[8192];
@@ -197,6 +200,7 @@ void *oam_session_run_lbm(void *args)
         close(ns_fd);
     }
 
+    #if 0
     l = libnet_init(
         LIBNET_LINK,                                /* injection type */
         current_params->if_name,                    /* network interface */
@@ -208,6 +212,7 @@ void *oam_session_run_lbm(void *args)
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
+    #endif
 
     /* Copy libnet context pointer */
     current_session.l = l;
@@ -279,29 +284,6 @@ void *oam_session_run_lbm(void *args)
             current_session.vlan_id = current_params->vlan_id;
             current_session.dei = current_params->dei;
             current_session.custom_vlan = true;
-
-            /* Build Ethernet header */
-            eth_ptag = libnet_build_802_1q(
-                (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
-                (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
-                ETHERTYPE_VLAN,                                         /* Tag protocol identifier */
-                current_session.pcp,                                    /* Priority code point */
-                current_session.dei,                                    /* Drop eligible indicator(formerly CFI) */
-                current_session.vlan_id,                                /* VLAN identifier */
-                ETHERTYPE_OAM,                                          /* Protocol type */
-                (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
-                sizeof(lb_frame),                                       /* Payload size */
-                l,                                                      /* libnet handle */
-                eth_ptag);                                              /* libnet tag */
-        } else {
-            eth_ptag = libnet_build_ethernet(
-                (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
-                (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
-                ETHERTYPE_OAM,                                          /* Ethernet type */
-                (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
-                sizeof(lb_frame),                                       /* Payload size */
-                l,                                                      /* libnet handle */
-                eth_ptag);                                              /* libnet tag */
         }
     } else
         current_session.is_if_tagged = true;
@@ -475,6 +457,35 @@ void *oam_session_run_lbm(void *args)
                 oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
             
                 if (current_session.pcp > 0 || current_session.vlan_id) {
+
+                    /* Build VLAN frame */
+                    uint8_t tx_frame[tx_vlan_frame_s];
+                    memset(&tx_frame, 0, tx_vlan_frame_s);
+                    oam_build_vlan_frame(
+                        dst_hwaddr,
+                        src_hwaddr,
+                        ETHERTYPE_VLAN,
+                        current_session.pcp,
+                        current_session.dei,
+                        current_session.vlan_id,
+                        ETHERTYPE_OAM,
+                        (uint8_t *)&lb_frame,
+                        sizeof(lb_frame),
+                        (uint8_t *)&tx_frame);
+
+                    /* Send frame on wire */
+                    sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_vlan_frame_s,
+                                    0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
+
+                    /* Did we send everything? */
+                    if (sent_bytes != (ssize_t)tx_vlan_frame_s) {
+                        oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
+                                        oam_perror(errno), sent_bytes);
+                        current_thread->ret = -1;
+                        pthread_exit(NULL);
+                    }
+
+                    #if 0
                     eth_ptag = libnet_build_802_1q(
                         (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
                         (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
@@ -487,7 +498,33 @@ void *oam_session_run_lbm(void *args)
                         sizeof(lb_frame),                                       /* Payload size */
                         l,                                                      /* libnet handle */
                         eth_ptag);                                              /* libnet tag */
+                    #endif
                 } else {
+
+                    /* Build ETH frame */
+                    uint8_t tx_frame[tx_eth_frame_s];
+                    memset(&tx_frame, 0, tx_eth_frame_s);
+                    oam_build_eth_frame(
+                        dst_hwaddr,
+                        src_hwaddr,
+                        ETHERTYPE_OAM,
+                        (uint8_t *)&lb_frame,
+                        sizeof(lb_frame),
+                        (uint8_t *)&tx_frame);
+
+                    /* Send frame on wire */
+                    sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_eth_frame_s,
+                                    0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
+
+                    /* Did we send everything? */
+                    if (sent_bytes != (ssize_t)tx_eth_frame_s) {
+                        oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
+                                        oam_perror(errno), sent_bytes);
+                        current_thread->ret = -1;
+                        pthread_exit(NULL);
+                    }
+
+                    #if 0
                     eth_ptag = libnet_build_ethernet(
                         (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
                         (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
@@ -496,8 +533,10 @@ void *oam_session_run_lbm(void *args)
                         sizeof(lb_frame),                                       /* Payload size */
                         l,                                                      /* libnet handle */
                         eth_ptag);                                              /* libnet tag */
+                    #endif
                 }
 
+                #if 0
                 if (eth_ptag == -1) {
                     oam_pr_error(current_params, "[%s:%d]: Can't build LBM frame: libnet_build error.\n", __FILE__, __LINE__);
                     current_session.send_next_frame = false;
@@ -509,6 +548,8 @@ void *oam_session_run_lbm(void *args)
                     current_session.send_next_frame = false;
                     continue;
                 }
+                #endif
+
 
                 /* Get aprox timestamp of sent frame */
                 if (clock_gettime(CLOCK_MONOTONIC, &(current_session.time_sent)) == -1) {

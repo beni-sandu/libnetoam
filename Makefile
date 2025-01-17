@@ -75,4 +75,5 @@ test-run-valgrind: test
 
 clean:
 	$(Q)rm -rf $(OUTDIR) 2> /dev/null ||:
+	$(Q)rm -rf *.o 2> /dev/null ||:
 	$(Q)$(MAKE) -s -C $(TESTDIR) clean
