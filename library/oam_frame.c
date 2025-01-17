@@ -28,7 +28,7 @@ void oam_build_eth_frame(uint8_t *dst_addr, uint8_t *src_addr, uint16_t type, ui
     memcpy(frame + ETHER_HDR_LEN, payload, payload_s);
 }
 
-void oam_build_vlan_frame(const uint8_t *dst_addr, const uint8_t *src_addr, uint16_t tpi, uint8_t pcp, uint8_t cfi,
+void oam_build_vlan_frame(uint8_t *dst_addr, uint8_t *src_addr, uint16_t tpi, uint8_t pcp, uint8_t dei,
         uint16_t vlan_id, uint16_t ether_type, uint8_t* payload, uint32_t payload_s, uint8_t *frame)
 {
     struct oam_vlan_header vlan_hdr;
@@ -38,7 +38,7 @@ void oam_build_vlan_frame(const uint8_t *dst_addr, const uint8_t *src_addr, uint
     memcpy(&vlan_hdr.dst_addr, dst_addr, ETH_ALEN);
     memcpy(&vlan_hdr.src_addr, src_addr, ETH_ALEN);
     vlan_hdr.tpi = htons(tpi);
-    vlan_hdr.pcp_vid = htons((pcp << 13) | (cfi << 12) | (vlan_id & VLAN_VIDMASK));
+    vlan_hdr.pcp_vid = htons((pcp << 13) | (dei << 12) | (vlan_id & VLAN_VIDMASK));
     vlan_hdr.ether_type = htons(ether_type);
 
     /* Fill in final frame */
