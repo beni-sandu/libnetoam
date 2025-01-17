@@ -17,7 +17,7 @@ Building and installing
 Install needed dependencies first (e.g. on Debian derived systems):
 
 ```sh
-$ sudo apt install libnet1-dev libcap-dev
+$ sudo apt install libcap-dev
 ```
 
 Build and install libnetoam:

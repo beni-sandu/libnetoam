@@ -4,17 +4,19 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <pthread.h>
-#include <stdio.h>
-#include <libnet.h>
-#include <sys/capability.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <linux/filter.h>
-#include <linux/if_packet.h>
 #include <poll.h>
+#include <pthread.h>
+#include <signal.h>
+#include <sys/capability.h>
+#include <time.h>
 
-#include "../include/oam_session.h"
-#include "../include/oam_frame.h"
 #include "../include/libnetoam.h"
+#include "../include/oam_frame.h"
+#include "../include/oam_session.h"
 
 /* Forward declarations */
 static void lbm_timeout_handler(union sigval sv);
@@ -125,7 +127,6 @@ void *oam_session_run_lbm(void *args)
     current_session.is_multicast = false;
     current_session.meg_level = current_params->meg_level;
     current_session.custom_vlan = false;
-    current_session.l = NULL;
     current_session.rx_sockfd = -1;
     current_session.tx_sockfd = -1;
     current_session.is_if_tagged = false;
@@ -664,7 +665,7 @@ void *oam_session_run_lbr(void *args)
 
     memset(&current_session, 0, sizeof(current_session));
     current_session.meg_level = current_params->meg_level;
-    current_session.l = NULL;
+    current_session.tx_sockfd = -1;
     current_session.rx_sockfd = -1;
     current_session.current_params = current_params;
 
