@@ -94,6 +94,6 @@ void oam_build_common_header(uint8_t meg_level, uint8_t version, enum oam_opcode
 void oam_build_eth_frame(uint8_t *dst_addr, uint8_t *src_addr, uint16_t type, uint8_t *payload,
 		size_t payload_s,uint8_t *frame);
 void oam_build_vlan_frame(uint8_t *dst_addr, uint8_t *src_addr, uint16_t tpi, uint8_t pcp, uint8_t dei,
-        uint16_t vlan_id, uint16_t ether_type, uint8_t* payload, uint32_t payload_s, uint8_t *frame);
+        uint16_t vlan_id, uint16_t ether_type, uint8_t* payload, size_t payload_s, uint8_t *frame);
 
 #endif //_OAM_FRAME_H
