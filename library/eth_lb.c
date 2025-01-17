@@ -24,8 +24,6 @@ void *oam_session_run_lbr(void *args);
 void *oam_session_run_lbm(void *args);
 
 /* Per thread variables */
-static __thread libnet_t *l;                                       /* libnet context */
-static __thread char libnet_errbuf[LIBNET_ERRBUF_SIZE];            /* libnet error buffer */
 static __thread struct oam_lbm_timer tx_timer;                     /* TX timer */
 static __thread struct oam_lb_pdu lb_frame;
 static __thread struct sockaddr_ll rx_sll;                         /* RX socket address */
@@ -36,7 +34,6 @@ static __thread uint32_t lbm_missed_pings;
 static __thread uint32_t lbm_replied_pings;
 static __thread uint32_t lbm_multicast_replies;
 static __thread bool is_lbm_session_recovered;
-static __thread libnet_ptag_t eth_ptag = 0;
 static __thread cap_t caps;
 static __thread cap_flag_value_t cap_val;
 static __thread int ns_fd;
@@ -464,8 +461,7 @@ void *oam_session_run_lbm(void *args)
                     if (sent_bytes != (ssize_t)tx_vlan_frame_s) {
                         oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
                                         oam_perror(errno), sent_bytes);
-                        current_thread->ret = -1;
-                        pthread_exit(NULL);
+                        continue;
                     }
                 } else {
 
@@ -488,8 +484,7 @@ void *oam_session_run_lbm(void *args)
                     if (sent_bytes != (ssize_t)tx_eth_frame_s) {
                         oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
                                         oam_perror(errno), sent_bytes);
-                        current_thread->ret = -1;
-                        pthread_exit(NULL);
+                        continue;
                     }
                 }
 
@@ -632,6 +627,8 @@ void *oam_session_run_lbr(void *args)
     struct oam_lb_pdu *lbr_frame_p;
     struct oam_lb_session current_session;
     const uint8_t eth_broadcast[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    size_t tx_eth_frame_s = sizeof(struct ether_header) + sizeof(struct oam_lb_pdu);
+    ssize_t sent_bytes = 0;
 
     /* Setup buffer and header structs for received packets */
     uint8_t recv_buf[8192];
@@ -726,18 +723,6 @@ void *oam_session_run_lbr(void *args)
         close(ns_fd);
     }
 
-    l = libnet_init(
-        LIBNET_LINK,                                /* injection type */
-        current_params->if_name,                    /* network interface */
-        libnet_errbuf);                             /* error buffer */
-
-    if (l == NULL) {
-        oam_pr_error(current_params, "[%s:%d]: libnet_init() failed: %s", __FILE__, __LINE__, libnet_errbuf);
-        current_thread->ret = -1;
-        sem_post(&current_thread->sem);
-        pthread_exit(NULL);
-    }
-
     /* Get source MAC address */
     if (oam_get_eth_mac(current_params->if_name, src_hwaddr, &current_session) == -1) {
         oam_pr_error(current_params, "[%s:%d] Error getting MAC address of local interface.\n", __FILE__, __LINE__);
@@ -746,10 +731,7 @@ void *oam_session_run_lbr(void *args)
         pthread_exit(NULL);
     }
 
-    /* Copy libnet pointer */
-    current_session.l = l;
-
-    /* Create a raw socket for incoming frames */
+    /* Create RX socket */
     if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
         oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
@@ -774,13 +756,13 @@ void *oam_session_run_lbr(void *args)
         pthread_exit(NULL);
     }
 
-    /* Setup socket address */
+    /* Setup RX socket address */
     memset(&rx_sll, 0, sizeof(struct sockaddr_ll));
     rx_sll.sll_family = AF_PACKET;
     rx_sll.sll_ifindex = if_index;
     rx_sll.sll_protocol = htons(ETH_P_ALL);
     
-    /* Bind it */
+    /* Bind RX socket */
     if (bind(current_session.rx_sockfd, (struct sockaddr *)&rx_sll, sizeof(rx_sll)) == -1) {
         oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
@@ -791,6 +773,28 @@ void *oam_session_run_lbr(void *args)
     /* Attach filter */
     if (setsockopt(current_session.rx_sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_program, sizeof(bpf_program)) < 0) {
         oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Create TX socket */
+    if ((current_session.tx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Setup RX socket address */
+    memset(&tx_sll, 0, sizeof(struct sockaddr_ll));
+    tx_sll.sll_family = AF_PACKET;
+    tx_sll.sll_ifindex = if_index;
+    tx_sll.sll_protocol = htons(ETHERTYPE_OAM);
+
+     /* Bind TX socket */
+    if (bind(current_session.tx_sockfd, (struct sockaddr *)&tx_sll, sizeof(tx_sll)) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -853,21 +857,16 @@ void *oam_session_run_lbr(void *args)
             /* Copy destination MAC address */
             memcpy(dst_hwaddr, eh->ether_shost, ETH_ALEN);
 
-            /* Build ETH header for the LBR frame that we send as a reply */
-            eth_ptag = libnet_build_ethernet(
-                (uint8_t *)dst_hwaddr,                                  /* Destination MAC */
-                (uint8_t *)src_hwaddr,                                  /* MAC of local interface */
-                ETHERTYPE_OAM,                                          /* Ethernet type */
-                (uint8_t *)&lb_frame,                                   /* Payload (LBM frame filled above) */
-                sizeof(lb_frame),                                       /* Payload size */
-                l,                                                      /* libnet handle */
-                eth_ptag);                                              /* libnet tag */
-
-            if (eth_ptag == -1) {
-                oam_pr_error(current_params, "[%s:%d]: Can't build LBR frame: libnet_build error.\n", __FILE__, __LINE__);
-                current_session.send_next_frame = false;
-                continue;
-            }
+            /* Build ETH frame */
+            uint8_t tx_frame[tx_eth_frame_s];
+            memset(&tx_frame, 0, tx_eth_frame_s);
+            oam_build_eth_frame(
+                dst_hwaddr,                                 /* Destination MAC */
+                src_hwaddr,                                 /* MAC of local interface */
+                ETHERTYPE_OAM,                              /* Ethernet protocol type */
+                (uint8_t *)&lb_frame,                       /* Payload (LBM frame) */
+                sizeof(lb_frame),                           /* Payload size */
+                (uint8_t *)&tx_frame);                      /* Final frame */
         
             /* If frame is multicast/broadcast, add delay between 0s - 1s as per standard */
             if (current_session.is_frame_multicast == true) {
@@ -876,8 +875,13 @@ void *oam_session_run_lbr(void *args)
             }
 
             /* Send frame on wire */
-            if (libnet_write(l) == -1) {
-                oam_pr_error(current_params, "[%s:%d]: libnet_write: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+            sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_eth_frame_s,
+                            0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
+
+            /* Did we send everything? */
+            if (sent_bytes != (ssize_t)tx_eth_frame_s) {
+                oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
+                                oam_perror(errno), sent_bytes);
                 continue;
             }
         }
@@ -912,11 +916,7 @@ static void lb_session_cleanup(void *args)
             usleep(100000);
         }
     }
-    
-    /* Clean up libnet context */
-    if (current_session->l != NULL)
-        libnet_destroy(current_session->l);
-    
+
     /* Close RX socket */
     if (current_session->rx_sockfd > 0)
         close(current_session->rx_sockfd);
