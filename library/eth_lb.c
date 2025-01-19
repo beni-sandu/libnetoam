@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <libnet.h>
 #include <sys/capability.h>
+#include <linux/filter.h>
 #include <linux/if_packet.h>
 #include <poll.h>
 
@@ -99,7 +100,21 @@ void *oam_session_run_lbm(void *args)
           .msg_iovlen = 1,
           .msg_control = &cmsg_buf,
           .msg_controllen = sizeof(cmsg_buf)
-     };
+    };
+
+    /* BPF filter for our ethertypes */
+    struct sock_filter bpf_code[] = {
+        { 0x28, 0, 0, 0x0000000c }, // Load EtherType at offset 12 in Ethernet header
+        { 0x15, 0, 1, 0x00008809 }, // Check if EtherType == 0x8809 (OAM)
+        { 0x15, 0, 1, 0x00008100 }, // Check if EtherType == 0x8100 (VLAN)
+        { 0x6,  0, 0, 0x0000ffff }, // Accept packet
+        { 0x6,  0, 0, 0x00000000 }  // Reject packet
+    };
+
+    struct sock_fprog bpf_program = {
+        .len = sizeof(bpf_code) / sizeof(bpf_code[0]),
+        .filter = bpf_code,
+    };
 
     /* Initialize some session and timer data */
     memset(&current_session, 0, sizeof(current_session));
@@ -315,7 +330,7 @@ void *oam_session_run_lbm(void *args)
     oam_pr_debug(current_params, "TX timer ID: %p\n", tx_timer.timer_id);
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
         oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -346,11 +361,19 @@ void *oam_session_run_lbm(void *args)
     memset(&sll, 0, sizeof(struct sockaddr_ll));
     sll.sll_family = AF_PACKET;
     sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETHERTYPE_OAM);
+    sll.sll_protocol = htons(ETH_P_ALL);
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
         oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Attach filter */
+    if (setsockopt(sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_program, sizeof(bpf_program)) < 0) {
+        oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
@@ -623,7 +646,21 @@ void *oam_session_run_lbr(void *args)
           .msg_iovlen = 1,
           .msg_control = &cmsg_buf,
           .msg_controllen = sizeof(cmsg_buf)
-     };
+    };
+
+    /* BPF filter for our ethertypes */
+    struct sock_filter bpf_code[] = {
+        { 0x28, 0, 0, 0x0000000c }, // Load EtherType at offset 12 in Ethernet header
+        { 0x15, 0, 1, 0x00008809 }, // Check if EtherType == 0x8809 (OAM)
+        { 0x15, 0, 1, 0x00008100 }, // Check if EtherType == 0x8100 (VLAN)
+        { 0x6,  0, 0, 0x0000ffff }, // Accept packet
+        { 0x6,  0, 0, 0x00000000 }  // Reject packet
+    };
+
+    struct sock_fprog bpf_program = {
+        .len = sizeof(bpf_code) / sizeof(bpf_code[0]),
+        .filter = bpf_code,
+    };
 
     memset(&current_session, 0, sizeof(current_session));
     current_session.meg_level = current_params->meg_level;
@@ -710,7 +747,7 @@ void *oam_session_run_lbr(void *args)
     current_session.l = l;
 
     /* Create a raw socket for incoming frames */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
         oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
@@ -741,11 +778,19 @@ void *oam_session_run_lbr(void *args)
     memset(&sll, 0, sizeof(struct sockaddr_ll));
     sll.sll_family = AF_PACKET;
     sll.sll_ifindex = if_index;
-    sll.sll_protocol = htons(ETHERTYPE_OAM);
+    sll.sll_protocol = htons(ETH_P_ALL);
     
     /* Bind it */
     if (bind(sockfd, (struct sockaddr *)&sll, sizeof(sll)) == -1) {
         oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Attach filter */
+    if (setsockopt(sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_program, sizeof(bpf_program)) < 0) {
+        oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
