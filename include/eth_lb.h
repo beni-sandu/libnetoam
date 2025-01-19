@@ -10,11 +10,11 @@
 #include <stdbool.h>
 #include <libnet.h>
 #include <net/ethernet.h>
+#include <linux/limits.h>
 
 #include "oam_frame.h"
 
 #define NET_NS_SIZE     (32U)
-#define MAX_PATH        (512U)
 #define ETH_STR_LEN     (18U)
 
 /*
@@ -44,7 +44,7 @@ struct oam_lb_session_params {
     uint16_t vlan_id;                                           /* VLAN identifier */
     uint8_t pcp;                                                /* Frame priority level (from 802.1q header) */
     bool dei;                                                   /* Drop eligible indicator */
-    char log_file[MAX_PATH];                                    /* Log file path */
+    char log_file[PATH_MAX];                                    /* Log file path */
     bool is_multicast;                                          /* Flag for multicast sessions */
     bool enable_console_logs;                                   /* Output log messages to console too */
     bool log_utc;                                               /* Output log messages in UTC timezone */

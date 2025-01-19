@@ -40,7 +40,7 @@ static __thread libnet_ptag_t eth_ptag = 0;
 static __thread cap_t caps;
 static __thread cap_flag_value_t cap_val;
 static __thread int ns_fd;
-static __thread char ns_buf[MAX_PATH] = "/run/netns/";
+static __thread char ns_buf[PATH_MAX] = "/run/netns/";
 static __thread struct tpacket_auxdata recv_auxdata;
 
 static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms, struct oam_lb_session *oam_session)
@@ -174,7 +174,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Configure network namespace */
     if (strlen(current_params->net_ns) != 0) {
-        snprintf(ns_buf + strlen(ns_buf), MAX_PATH - strlen(ns_buf), "%s", current_params->net_ns);
+        snprintf(ns_buf + strlen(ns_buf), PATH_MAX - strlen(ns_buf), "%s", current_params->net_ns);
 
         ns_fd = open(ns_buf, O_RDONLY);
 
@@ -701,7 +701,7 @@ void *oam_session_run_lbr(void *args)
 
     /* Configure network namespace */
     if (strlen(current_params->net_ns) != 0) {
-        snprintf(ns_buf + strlen(ns_buf), MAX_PATH - strlen(ns_buf), "%s", current_params->net_ns);
+        snprintf(ns_buf + strlen(ns_buf), PATH_MAX - strlen(ns_buf), "%s", current_params->net_ns);
 
         ns_fd = open(ns_buf, O_RDONLY);
 
