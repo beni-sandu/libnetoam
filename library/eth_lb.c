@@ -473,8 +473,14 @@ void *oam_session_run_lbm(void *args)
                     current_thread->ret = -1;
                     pthread_exit(NULL);
                 }
-                oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d\n", current_params->if_name,
-                    dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
+
+                if (current_session.is_if_tagged == true)
+                    oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d\n", current_params->if_name,
+                        dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
+                else
+                    oam_pr_debug(current_params, "[%s.%d] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d\n", current_params->if_name,
+                        current_params->vlan_id, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5],
+                        current_session.transaction_id);
 
                 current_session.send_next_frame = false;
                 frame_sent = true;
