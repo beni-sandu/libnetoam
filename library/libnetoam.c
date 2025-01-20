@@ -244,37 +244,40 @@ void oam_pr_log(char *log_file, const char *format, ...)
     time_t now;
     struct tm local_buf;
     char timestamp[100];
+    char formatted_message[2048];
     FILE *file = NULL;
 
-    if (log_file == NULL)
+    if (log_file == NULL || strlen(log_file) == 0)
         return;
 
-    if (strlen(log_file) == 0)
+    file = fopen(log_file, "a");
+    if (file == NULL) {
+        fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         return;
-    else {
-        file = fopen(log_file, "a");
-
-        if (file == NULL) {
-            fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror(errno));
-            return;
-        }
     }
 
     va_start(arg, format);
-    now = time(NULL);
-
-    if (localtime_r(&now, &local_buf) == NULL) {
-        va_end(arg);
-        fclose(file);
-        return;
-    }
-    
-    strftime(timestamp, sizeof(timestamp), "%d-%b-%Y %H:%M:%S", &local_buf);
-    fprintf(file, "[%s] ", timestamp);
-    vfprintf(file, format, arg);
+    vsnprintf(formatted_message, sizeof(formatted_message), format, arg);
     va_end(arg);
+
+    now = time(NULL);
+    if (localtime_r(&now, &local_buf) != NULL) {
+        strftime(timestamp, sizeof(timestamp), "%d-%b-%Y %H:%M:%S", &local_buf);
+        fprintf(file, "[%s] ", timestamp);
+    }
+
+    fprintf(file, "%s", formatted_message);
+
+    /* Ensure a newline, if not present */
+    size_t len = strlen(formatted_message);
+    if (len == 0 || formatted_message[len - 1] != '\n') {
+        fputc('\n', file);
+    }
+
+    fflush(file);
     fclose(file);
 }
+
 
 void oam_pr_log_utc(char *log_file, const char *format, ...)
 {
@@ -282,35 +285,37 @@ void oam_pr_log_utc(char *log_file, const char *format, ...)
     time_t now;
     struct tm utc_buf;
     char timestamp[100];
+    char formatted_message[2048];
     FILE *file = NULL;
 
-    if (log_file == NULL)
+    if (log_file == NULL || strlen(log_file) == 0)
         return;
 
-    if (strlen(log_file) == 0)
+    file = fopen(log_file, "a");
+    if (file == NULL) {
+        fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         return;
-    else {
-        file = fopen(log_file, "a");
-
-        if (file == NULL) {
-            fprintf(stderr, "[%s:%d]: fopen: %s.\n", __FILE__, __LINE__, oam_perror(errno));
-            return;
-        }
     }
 
     va_start(arg, format);
-    now = time(NULL);
-
-    if (gmtime_r(&now, &utc_buf) == NULL) {
-        va_end(arg);
-        fclose(file);
-        return;
-    }
-    
-    strftime(timestamp, sizeof(timestamp), "%d-%b-%Y %H:%M:%S UTC", &utc_buf);
-    fprintf(file, "[%s] ", timestamp);
-    vfprintf(file, format, arg);
+    vsnprintf(formatted_message, sizeof(formatted_message), format, arg);
     va_end(arg);
+
+    now = time(NULL);
+    if (gmtime_r(&now, &utc_buf) != NULL) {
+        strftime(timestamp, sizeof(timestamp), "%d-%b-%Y %H:%M:%S UTC", &utc_buf);
+        fprintf(file, "[%s] ", timestamp);
+    }
+
+    fprintf(file, "%s", formatted_message);
+
+    /* Ensure a newline, if not present */
+    size_t len = strlen(formatted_message);
+    if (len == 0 || formatted_message[len - 1] != '\n') {
+        fputc('\n', file);
+    }
+
+    fflush(file);
     fclose(file);
 }
 
