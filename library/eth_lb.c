@@ -479,13 +479,13 @@ void *oam_session_run_lbm(void *args)
                 }
 
                 if (eth_ptag == -1) {
-                    oam_pr_error(current_params, "[%s:%d]: Can't build LBM frame: %s", __FILE__, __LINE__, libnet_geterror(l));
+                    oam_pr_error(current_params, "[%s:%d]: Can't build LBM frame: libnet_build error.\n", __FILE__, __LINE__);
                     current_session.send_next_frame = false;
                     continue;
                 }
 
                 if (libnet_write(l) == -1) {
-                    oam_pr_error(current_params, "[%s:%d] libnet_write: %s", __FILE__, __LINE__, libnet_geterror(l));
+                    oam_pr_error(current_params, "[%s:%d] libnet_write: %s.\n", __FILE__, __LINE__, oam_perror(errno));
                     current_session.send_next_frame = false;
                     continue;
                 }
@@ -862,6 +862,12 @@ void *oam_session_run_lbr(void *args)
                 sizeof(lb_frame),                                       /* Payload size */
                 l,                                                      /* libnet handle */
                 eth_ptag);                                              /* libnet tag */
+
+            if (eth_ptag == -1) {
+                oam_pr_error(current_params, "[%s:%d]: Can't build LBR frame: libnet_build error.\n", __FILE__, __LINE__);
+                current_session.send_next_frame = false;
+                continue;
+            }
         
             /* If frame is multicast/broadcast, add delay between 0s - 1s as per standard */
             if (current_session.is_frame_multicast == true) {
@@ -871,7 +877,7 @@ void *oam_session_run_lbr(void *args)
 
             /* Send frame on wire */
             if (libnet_write(l) == -1) {
-                oam_pr_error(current_params, "[%s:%d]: libnet_write: %s", __FILE__, __LINE__, libnet_geterror(l));
+                oam_pr_error(current_params, "[%s:%d]: libnet_write: %s.\n", __FILE__, __LINE__, oam_perror(errno));
                 continue;
             }
         }
