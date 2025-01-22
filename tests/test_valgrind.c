@@ -147,5 +147,11 @@ int main(void)
 
     sleep(60);
 
+    /* Stop sessions */
+    oam_session_stop(s1_lbm);
+    oam_session_stop(s1_lbr);
+    oam_session_stop(s2_lbm);
+    oam_session_stop(s2_lbr);
+
     return test_status;
 }
