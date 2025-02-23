@@ -27,6 +27,7 @@ $ git clone https://github.com/beni-sandu/libnetoam.git
 $ cd libnetoam
 $ make
 $ sudo make install
+$ sudo ldconfig
 ```
 After the library is installed, you can link it with your program using -lnetoam.
 
