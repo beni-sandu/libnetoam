@@ -132,6 +132,8 @@ void *oam_session_run_lbm(void *args)
     current_session.tx_sockfd = -1;
     current_session.is_if_tagged = false;
     current_session.current_params = current_params;
+    current_session.last_timer_tid = 0;
+    current_session.timer_thread_valid = false;
 
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
@@ -274,29 +276,43 @@ void *oam_session_run_lbm(void *args)
     } else
         current_session.is_if_tagged = true;
 
-    /* Initial TX timer configuration */
-    tx_sev.sigev_notify = SIGEV_THREAD;                         /* Notify via thread */
-    tx_sev.sigev_notify_function = &lbm_timeout_handler;        /* Handler function */
-    tx_sev.sigev_notify_attributes = NULL;                      /* Could be pointer to pthread_attr_t structure */
-    tx_sev.sigev_value.sival_ptr = &current_session;            /* Pointer passed to handler */
-
-    /* Configure TX interval */
-    tx_ts.it_interval.tv_sec = current_session.interval_ms / 1000;
-    tx_ts.it_interval.tv_nsec = current_session.interval_ms % 1000 * 1000000;
-    tx_ts.it_value.tv_sec = current_session.interval_ms / 1000;
-    tx_ts.it_value.tv_nsec = current_session.interval_ms % 1000 * 1000000;
-
-    /* Create TX timer */
-    if (timer_create(CLOCK_MONOTONIC, &tx_sev, &(tx_timer.timer_id)) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: timer_create: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+    /* Make TX timer callback threads joinable */
+    pthread_attr_t timer_attr;
+    if (pthread_attr_init(&timer_attr) != 0) {
+        oam_pr_error(current_params, "[%s:%d]: pthread_attr_init failed.\n", __FILE__, __LINE__);
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
-    /* Timer should be created, but we still get a NULL pointer sometimes */
+    if (pthread_attr_setdetachstate(&timer_attr, PTHREAD_CREATE_JOINABLE) != 0) {
+        oam_pr_error(current_params, "[%s:%d]: pthread_attr_setdetachstate failed.\n", __FILE__, __LINE__);
+        pthread_attr_destroy(&timer_attr);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Configure notification type and interval */
+    tx_sev.sigev_notify = SIGEV_THREAD;
+    tx_sev.sigev_notify_function = &lbm_timeout_handler;
+    tx_sev.sigev_notify_attributes = &timer_attr;
+    tx_sev.sigev_value.sival_ptr = &current_session;
+    tx_ts.it_interval.tv_sec = current_session.interval_ms / 1000;
+    tx_ts.it_interval.tv_nsec = current_session.interval_ms % 1000 * 1000000;
+    tx_ts.it_value.tv_sec = current_session.interval_ms / 1000;
+    tx_ts.it_value.tv_nsec = current_session.interval_ms % 1000 * 1000000;
+
+    /* Create it */
+    if (timer_create(CLOCK_MONOTONIC, &tx_sev, &(tx_timer.timer_id)) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: timer_create: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        pthread_attr_destroy(&timer_attr);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
     tx_timer.is_timer_created = true;
-    oam_pr_debug(current_params, "TX timer ID: %p\n", tx_timer.timer_id);
+    pthread_attr_destroy(&timer_attr);
 
     /* Create RX socket */
     if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
@@ -912,6 +928,8 @@ static void lbm_timeout_handler(union sigval sv)
 {
     struct oam_lb_session *current_session = sv.sival_ptr;
 
+    current_session->last_timer_tid = pthread_self();
+    current_session->timer_thread_valid = true;
     current_session->send_next_frame = true;
 }
 
@@ -919,17 +937,15 @@ static void lb_session_cleanup(void *args)
 {    
     struct oam_lb_session *current_session = (struct oam_lb_session *)args;
 
-    /* Cleanup timer data */
-    if (current_session->lbm_tx_timer != NULL) {
-        if (current_session->lbm_tx_timer->is_timer_created == true) {
-            timer_delete(current_session->lbm_tx_timer->timer_id);
-        
-            /*
-            * Temporary workaround for C++ programs, seems sometimes the timer doesn't 
-            * get disarmed in time, and tries to use memory that was already freed.
-            */
-            usleep(100000);
-        }
+    /* Clean up timer data */
+    if (current_session->timer_thread_valid == true) {
+        pthread_join(current_session->last_timer_tid, NULL);
+        current_session->timer_thread_valid = false;
+    }
+
+    if (current_session->lbm_tx_timer != NULL && current_session->lbm_tx_timer->is_timer_created == true) {
+        timer_delete(current_session->lbm_tx_timer->timer_id);
+        current_session->lbm_tx_timer->is_timer_created = false;
     }
 
     /* Close RX socket */

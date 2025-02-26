@@ -70,6 +70,8 @@ struct oam_lb_session {
     bool custom_vlan;                                           /* Flag for custom VLAN */
     bool is_if_tagged;                                          /* Flag describing if session is started on a VLAN */
     struct oam_lb_session_params *current_params;               /* Pointer to session parameters */
+    pthread_t last_timer_tid;                                   /* TID of last timer callback thread */
+    bool timer_thread_valid;                                    /* Flag to indicate if a timer thread is currently active */
 };
 
 /* LBM session timer */
