@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <sys/capability.h>
+#include <sys/random.h>
 #include <time.h>
 
 #include "../include/libnetoam.h"
@@ -76,7 +77,7 @@ void *oam_session_run_lbm(void *args)
     uint8_t src_hwaddr[ETH_ALEN];
     uint8_t dst_hwaddr[ETH_ALEN];
     struct itimerspec tx_ts;
-    struct sigevent tx_sev;
+    struct sigevent tx_sev = {0};
     struct oam_lb_session current_session;
     int if_index = 0;
     struct ether_header *eh;
@@ -236,9 +237,13 @@ void *oam_session_run_lbm(void *args)
         pthread_exit(NULL);
     }
 
-    /* Seed random generator used for transaction id */
-    srandom((uint64_t)current_params);
-    current_session.transaction_id = random();
+    /* Get random value for transaction ID */
+    if (getrandom(&(current_session.transaction_id), sizeof(uint32_t), 0) == -1) {
+        oam_pr_error(current_params, "[%s:%d] getrandom: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
 
     /* Build oam common header for LMB frames */
     oam_build_common_header(current_session.meg_level, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
@@ -388,18 +393,18 @@ void *oam_session_run_lbm(void *args)
             if (got_reply == false) {
 
                 if (current_session.is_multicast == true) {
-                    oam_pr_info(current_params, "[%s] No replies to multicast LBM, trans_id: %d\n",
+                    oam_pr_info(current_params, "[%s] No replies to multicast LBM, trans_id: %u\n",
                             current_params->if_name, current_session.transaction_id);
 
                     lbm_multicast_replies = 0;
                 } else {
                     
                     if (current_session.is_if_tagged == true)
-                        oam_pr_info(current_params, "[%s] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d.\n",
+                        oam_pr_info(current_params, "[%s] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u.\n",
                                 current_params->if_name, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4],
                                 dst_hwaddr[5], current_session.transaction_id);
                     else
-                        oam_pr_info(current_params, "[%s.%u] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d.\n",
+                        oam_pr_info(current_params, "[%s.%u] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u.\n",
                                 current_params->if_name, current_session.vlan_id, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3],
                                 dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
 
@@ -492,15 +497,14 @@ void *oam_session_run_lbm(void *args)
                 /* Get aprox timestamp of sent frame */
                 if (clock_gettime(CLOCK_MONOTONIC, &(current_session.time_sent)) == -1) {
                     oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
-                    current_thread->ret = -1;
                     pthread_exit(NULL);
                 }
 
                 if (current_session.is_if_tagged == true)
-                    oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d\n", current_params->if_name,
+                    oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
                         dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
                 else
-                    oam_pr_debug(current_params, "[%s.%d] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d\n", current_params->if_name,
+                    oam_pr_debug(current_params, "[%s.%d] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
                         current_params->vlan_id, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5],
                         current_session.transaction_id);
 
@@ -518,7 +522,6 @@ void *oam_session_run_lbm(void *args)
                 /* Get aprox timestamp of received frame */
                 if (clock_gettime(CLOCK_MONOTONIC, &current_session.time_received) == -1) {
                     oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
-                    current_thread->ret = -1;
                     pthread_exit(NULL);
                 }
 
@@ -558,7 +561,7 @@ void *oam_session_run_lbm(void *args)
 
                 /* Check transaction ID */
                 if (ntohl(lbm_frame_p->transaction_id) != current_session.transaction_id) {
-                    oam_pr_debug(current_params, "Ignoring LBR with different trans_id = %d\n", ntohl(lbm_frame_p->transaction_id));
+                    oam_pr_debug(current_params, "Ignoring LBR with different trans_id = %u\n", ntohl(lbm_frame_p->transaction_id));
                     continue;
                 }
 
@@ -571,13 +574,13 @@ void *oam_session_run_lbm(void *args)
 
                 /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
                 if (current_session.is_if_tagged == true)
-                    oam_pr_info(current_params, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d, time: %.3f ms\n",
+                    oam_pr_info(current_params, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
                             current_params->if_name, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
                 else
-                    oam_pr_info(current_params, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %d, time: %.3f ms\n",
+                    oam_pr_info(current_params, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
                             current_params->if_name, current_session.vlan_id, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
@@ -801,9 +804,6 @@ void *oam_session_run_lbr(void *args)
         pthread_exit(NULL);
     }
 
-    /* Seed random generator used for multicast LBRs */
-    srandom((uint64_t)current_params);
-
     /* Session configuration is successful, return a valid session id */
     current_session.is_session_configured = true;
 
@@ -868,10 +868,24 @@ void *oam_session_run_lbr(void *args)
                 (uint8_t *)&lb_frame,                       /* Payload (LBM frame) */
                 sizeof(lb_frame),                           /* Payload size */
                 (uint8_t *)&tx_frame);                      /* Final frame */
-        
-            /* If frame is multicast/broadcast, add delay between 0s - 1s as per standard */
+
+            /* If frame is multicast/broadcast, add a random delay between 0s - 1s as per standard */
             if (current_session.is_frame_multicast == true) {
-                usleep(1000 * (random() % 1000));
+                struct timespec ts;
+                unsigned int random_value;
+
+                if (getrandom(&random_value, sizeof(random_value), 0) == -1) {
+                    oam_pr_error(current_params, "[%s:%d]: getrandom: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                    pthread_exit(NULL);
+                }
+
+                ts.tv_sec = 0;
+                ts.tv_nsec = random_value % 1000000000L;
+
+                if (clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, NULL) != 0) {
+                    oam_pr_error(current_params, "[%s:%d]: clock_nanosleep: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                    pthread_exit(NULL);
+                }
                 current_session.is_frame_multicast = false;
             }
 

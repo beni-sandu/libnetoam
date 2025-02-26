@@ -107,7 +107,7 @@ int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
     /* Fill in request that we send to the kernel */
     size_t seq_num = 0;
     memset(&req, 0, sizeof(req));
-    struct nlmsghdr *nh;
+    struct nlmsghdr *nh = NULL;
     struct sockaddr_nl sa = {0};
     struct iovec iov[1] = { {&req, sizeof(req)} };
     struct msghdr msg = {
@@ -137,7 +137,7 @@ int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
     }
 
     /* Swap header payload */
-    uint8_t recv_buf[RECV_BUFSIZE];
+    uint8_t recv_buf[RECV_BUFSIZE] = {0};
     iov->iov_base = &recv_buf;
     iov->iov_len = RECV_BUFSIZE;
 
