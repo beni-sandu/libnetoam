@@ -26,7 +26,7 @@ sleep 2
 export LD_LIBRARY_PATH="../build"
 
 # Run all tests from directory
-tests=$(find * -type f -name 'test_*' ! -name 'test_valgrind')
+tests=$(find * -type f -name 'test_*' ! -name 'test_valgrind' ! -name 'test_session_multicast')
 
 for f in $tests
 do
@@ -39,8 +39,76 @@ do
     fi
 done
 
-# When done, delete the peers
+# Below is a testcase for multicast sessions
+# We need to create a network setup that simulates a switch
+
+# Clean up previous configuration just in case
 ip link del dev veth0 2>/dev/null || :
 ip link del dev veth1 2>/dev/null || :
 ip link del dev veth2 2>/dev/null || :
 ip link del dev veth3 2>/dev/null || :
+sleep 2
+
+# Create a network bridge
+ip link add name br0 type bridge
+ip link set br0 up
+
+# Create LBM/LBR endpoints
+ip link add veth-lbm type veth peer name lbm-peer
+ip link add veth-lbr1 type veth peer name lbr1-peer
+ip link add veth-lbr2 type veth peer name lbr2-peer
+ip link add veth-lbr3 type veth peer name lbr3-peer
+
+# Attach one end of each pair to the bridge
+ip link set veth-lbm master br0
+ip link set veth-lbr1 master br0
+ip link set veth-lbr2 master br0
+ip link set veth-lbr3 master br0
+
+# Bring everything up
+ip link set veth-lbm up
+ip link set veth-lbr1 up
+ip link set veth-lbr2 up
+ip link set veth-lbr3 up
+ip link set lbm-peer up
+ip link set lbr1-peer up
+ip link set lbr2-peer up
+ip link set lbr3-peer up
+sleep 2
+
+# Run the test binary
+test_multicast=test_session_multicast
+./${test_multicast} > ./${test_multicast}.out 2> ./${test_multicast}.err
+
+# Get the MAC adresses of the LBR peers
+interfaces=( lbr1-peer lbr2-peer lbr3-peer )
+declare -A macs
+for iface in "${interfaces[@]}"; do
+    mac=$(ip link show "$iface" | awk '/link\/ether/ {print $2}')
+    macs["$iface"]="$mac"
+done
+
+# We should have 1 reply from each LBR peer
+all_found=1
+for iface in "${interfaces[@]}"; do
+    mac=${macs["$iface"]}
+    if ! grep -qi "Got LBR from: $mac," "${test_multicast}.out"; then
+        all_found=0
+    fi
+done
+
+if [ $all_found -eq 1 ]; then
+    echo "PASS: ${test_multicast}"
+else
+    echo "FAIL: ${test_multicast}"
+fi
+
+# When done, clean everything up
+ip link set veth0 nomaster 2>/dev/null || :
+ip link set br0 down 2>/dev/null || :
+ip link delete br0 type bridge 2>/dev/null || :
+ip link delete veth-lbm 2>/dev/null || :
+ip link delete veth-lbr1 2>/dev/null || :
+ip link delete veth-lbr2 2>/dev/null || :
+ip link delete veth-lbr3 2>/dev/null || :
+
