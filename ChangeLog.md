@@ -3,6 +3,14 @@ Change log
 
 All relevant changes are documented in this file.
 
+v0.1.2 released TBD
+-------------
+* remove libnet dependency
+* add a ETH-LB multicast testcase
+* update deprecated random()/usleep() interfaces
+* improve memory leak testcase
+* implement a proper fix for the possible interval timer race condition
+
 v0.1.1 released 22-Jan-2025
 -------------
 * ETH-LB - use monotonic clocks instead of realtime
