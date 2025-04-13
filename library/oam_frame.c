@@ -45,7 +45,7 @@ void oam_build_vlan_frame(uint8_t *dst_addr, uint8_t *src_addr, uint16_t tpi, ui
 }
 
 void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame)
-{    
+{
     /* At this point, the common header should be already filled in, so we only add the rest of the LB frame */
     oam_frame->transaction_id = htonl(transaction_id);
 

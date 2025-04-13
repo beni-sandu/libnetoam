@@ -298,6 +298,6 @@ int main(void)
     /* Stop sessions */
     oam_session_stop(s1_lbm);
     oam_session_stop(s1_lbr);
-     
+
     return test_status;
 }

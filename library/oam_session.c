@@ -15,7 +15,7 @@
  * on successful creation, -1 otherwise
  */
 oam_session_id oam_session_start(void *params, enum oam_session_type session_type)
-{    
+{
     pthread_t session_id = -1;
     int ret = 1;
     struct oam_session_thread new_thread;
@@ -51,7 +51,7 @@ oam_session_id oam_session_start(void *params, enum oam_session_type session_typ
 
     if (new_thread.ret != 0)
         return new_thread.ret;
-    
+
     return session_id;
 }
 

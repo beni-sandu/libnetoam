@@ -328,7 +328,7 @@ void *oam_session_run_lbm(void *args)
     rx_sll.sll_family = AF_PACKET;
     rx_sll.sll_ifindex = if_index;
     rx_sll.sll_protocol = htons(ETH_P_ALL);
-    
+
     /* Bind RX socket */
     if (bind(current_session.rx_sockfd, (struct sockaddr *)&rx_sll, sizeof(rx_sll)) == -1) {
         oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
@@ -398,7 +398,7 @@ void *oam_session_run_lbm(void *args)
 
                     lbm_multicast_replies = 0;
                 } else {
-                    
+
                     if (current_session.is_if_tagged == true)
                         oam_pr_info(current_params, "[%s] Request timeout for: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u.\n",
                                 current_params->if_name, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4],
@@ -435,13 +435,13 @@ void *oam_session_run_lbm(void *args)
             }
 
             if (frame_sent == false) {
-            
+
                 /* Bump transaction id */
                 current_session.transaction_id++;
-            
+
                 /* Update frame and send on wire */
                 oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
-            
+
                 if (current_session.pcp > 0 || current_session.vlan_id) {
 
                     /* Build VLAN frame */
@@ -515,7 +515,7 @@ void *oam_session_run_lbm(void *args)
 
         /* We need another loop, in case session is multicast */
         while (true && (current_session.send_next_frame != true)) {
-            
+
             /* Check for incoming data */
             if (recvmsg_ppoll(current_session.rx_sockfd, &recv_hdr, current_session.interval_ms, &current_session) > 0) {
 
@@ -531,7 +531,7 @@ void *oam_session_run_lbm(void *args)
                 /* If frame is not addressed to this interface, drop it */
                 if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
                     continue;
-    
+
                 /* Is the received frame tagged? */
                 if (oam_is_frame_tagged(&recv_hdr, &recv_auxdata) == true) {
 
@@ -551,7 +551,7 @@ void *oam_session_run_lbm(void *args)
                 lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
                 if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
                     continue;
-    
+
                 /* Check MEG level*/
                 if (((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
                     oam_pr_debug(current_params, "Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
@@ -607,7 +607,7 @@ void *oam_session_run_lbm(void *args)
                 /* If session is multicast, check for data again, otherwise break the loop */
                 if (current_session.is_multicast == false)
                     break;
-            
+
             } // if (recvmsg_ppoll > 0)
         } // multicast loop
     } // while (true)
@@ -765,7 +765,7 @@ void *oam_session_run_lbr(void *args)
     rx_sll.sll_family = AF_PACKET;
     rx_sll.sll_ifindex = if_index;
     rx_sll.sll_protocol = htons(ETH_P_ALL);
-    
+
     /* Bind RX socket */
     if (bind(current_session.rx_sockfd, (struct sockaddr *)&rx_sll, sizeof(rx_sll)) == -1) {
         oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
@@ -820,11 +820,11 @@ void *oam_session_run_lbr(void *args)
         if (numbytes > 0) {
 
             oam_pr_debug(current_params, "Received frame on LBR session, %ld bytes.\n", numbytes);
-            
+
             /* If frame has a tag, it is not for us */
             if (oam_is_frame_tagged(&recv_hdr, NULL) == true)
                 continue;
-            
+
             /* Get ETH header */
             eh = (struct ether_header *)recv_buf;
 
@@ -832,7 +832,7 @@ void *oam_session_run_lbr(void *args)
             lbr_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
             if (lbr_frame_p->oam_header.opcode != OAM_OP_LBM)
                 continue;
-            
+
             /* Is frame addressed to this interface? */
             if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0) {
 
@@ -916,14 +916,14 @@ static void lbm_timeout_handler(union sigval sv)
 }
 
 static void lb_session_cleanup(void *args)
-{    
+{
     struct oam_lb_session *current_session = (struct oam_lb_session *)args;
 
     /* Cleanup timer data */
     if (current_session->lbm_tx_timer != NULL) {
         if (current_session->lbm_tx_timer->is_timer_created == true) {
             timer_delete(current_session->lbm_tx_timer->timer_id);
-        
+
             /*
             * Temporary workaround for C++ programs, seems sometimes the timer doesn't 
             * get disarmed in time, and tries to use memory that was already freed.
