@@ -44,13 +44,13 @@ Below is a code example of a typical workflow:
 ```c
 // Callback to act on link change
 void lbm_callback(struct cb_status *status) {
-    
+
     switch(status->cb_ret) {
         case OAM_LB_CB_MISSED_PING_THRESH:
             printf("[%s] Consecutive missed ping threshold reached.\n",
                             status->session_params->if_name);
             break;
-        
+
         case OAM_LB_CB_RECOVER_PING_THRESH:
             printf("[%s] Recovery threshold reached.\n", status->session_params->if_name);
             break;

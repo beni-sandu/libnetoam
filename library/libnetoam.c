@@ -121,7 +121,7 @@ int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
     req.header.nlmsg_type = RTM_GETLINK;
     req.header.nlmsg_seq = ++seq_num;
     sa.nl_family = AF_NETLINK;
-    
+
     /* Create a netlink route socket */
     sfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sfd < 0) {
@@ -194,10 +194,10 @@ int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
 
                         /* Follow first chain */
                         for (; RTA_OK(rtk, rtk_len); rtk = RTA_NEXT(rtk, rtk_len)) {
-                            
+
                             /* Get INFO_KIND */
                             if (rtk->rta_type == IFLA_INFO_KIND) {
-                                
+
                                 /* Is it a VLAN? */
                                 if (!strcmp(((char *)RTA_DATA(rtk)), "vlan")) {
                                     close(sfd);
@@ -205,10 +205,8 @@ int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session)
                                 }
                             }
                         }
-                        
                     }
                 }
-
                 close(sfd);
                 return 1;
             }

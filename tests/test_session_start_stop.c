@@ -18,7 +18,7 @@ int main(void)
         .if_name = "veth2",
         .meg_level = 0,
     };
-    
+
     printf("Running with: %s\n", netoam_lib_version());
     oam_pr_debug(NULL, "NOTE: You are running a debug build.\n");
 
@@ -40,7 +40,7 @@ int main(void)
         printf("FAIL: test LBR session start.\n");
         test_status = -1;
     }
-    
+
     sleep(2);
     oam_session_stop(s1_lbm);
     oam_session_stop(s1_lbr);
