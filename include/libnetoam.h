@@ -77,7 +77,7 @@ const char *netoam_lib_version(void);
 oam_session_id oam_session_start(void *params, enum oam_session_type session_type);
 void oam_session_stop(oam_session_id session_id);
 int oam_get_eth_mac(char *if_name, uint8_t *mac_addr, struct oam_lb_session *oam_session);
-int oam_hwaddr_str2bin(char *mac, uint8_t *addr);
+int oam_hwaddr_str2bin(const char *mac, uint8_t *addr);
 int oam_is_eth_vlan(char *if_name, struct oam_lb_session *oam_session);
 bool oam_is_frame_tagged(struct msghdr *recv_msg, struct tpacket_auxdata *aux_buf);
 void oam_pr_log(char *log_file, const char *format, ...) __attribute__ ((format (printf, 2, 3)));

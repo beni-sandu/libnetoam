@@ -35,7 +35,7 @@ static int hex2bin(char ch)
 	return -1;
 }
 
-int oam_hwaddr_str2bin(char *mac, uint8_t *addr)
+int oam_hwaddr_str2bin(const char *mac, uint8_t *addr)
 {
 	int i;
 
