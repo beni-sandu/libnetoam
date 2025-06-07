@@ -880,6 +880,16 @@ void *oam_session_run_lbr(void *args)
     return NULL;
 }
 
+/* Entry point of OAM_SESSION_LB_DISCOVER type */
+void *oam_session_run_lb_discover(void *args)
+{
+    struct oam_session_thread *current_thread = (struct oam_session_thread *)args;
+    struct oam_lb_session_params *current_params = current_thread->session_params;
+
+    /* Should never reach this */
+    return NULL;
+}
+
 static void lbm_timeout_handler(union sigval sv)
 {
     struct oam_lb_session *current_session = sv.sival_ptr;

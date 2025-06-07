@@ -32,6 +32,9 @@ oam_session_id oam_session_start(void *params, enum oam_session_type session_typ
         case OAM_SESSION_LBR:
             ret = pthread_create(&session_id, NULL, oam_session_run_lbr, (void *)&new_thread);
             break;
+        case OAM_SESSION_LB_DISCOVER:
+            ret = pthread_create(&session_id, NULL, oam_session_run_lb_discover, (void *)&new_thread);
+            break;
         default:
             oam_pr_error(NULL, "[%s:%d]: Invalid OAM session type.\n", __FILE__, __LINE__);
     }
