@@ -932,6 +932,7 @@ void *oam_session_run_lb_discover(void *args)
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
     current_session.is_lb_discover = current_params->is_lb_discover;
+    current_session.dst_addr_count = 0;
 
     callback_status.cb_ret = OAM_LB_CB_DEFAULT;
     callback_status.session_params = current_params;
@@ -998,6 +999,31 @@ void *oam_session_run_lb_discover(void *args)
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
+
+    /*
+     * Validate all the MAC addresses in the provided list.
+     * If an invalid MAC address is found, session is terminated with an error message.
+     */
+    while(current_params->dst_mac_list[current_session.dst_addr_count] != NULL) {
+        current_session.dst_hwaddr_list[current_session.dst_addr_count] = malloc(ETH_ALEN);
+
+        if (!current_session.dst_hwaddr_list[current_session.dst_addr_count]) {
+            oam_pr_error(current_params, "[%s:%d]: Memory allocation for MAC address failed.\n", __FILE__, __LINE__);
+            current_thread->ret = -1;
+            sem_post(&current_thread->sem);
+            pthread_exit(NULL);
+        }
+
+        if (oam_hwaddr_str2bin(current_params->dst_mac_list[current_session.dst_addr_count], current_session.dst_hwaddr_list[current_session.dst_addr_count]) == -1) {
+            oam_pr_error(current_params, "[%s:%d]: Invalid destination MAC address.\n", __FILE__, __LINE__);
+            current_thread->ret = -1;
+            sem_post(&current_thread->sem);
+            pthread_exit(NULL);
+        }
+        current_session.dst_addr_count++;
+    }
+
+    oam_pr_debug(current_params, "Found %d valid MAC addresses in the provided list.\n", current_session.dst_addr_count);
 
     /* Use a minimum of 5 seconds TX interval (similar to multicast mode) */
     if (current_session.interval_ms < 5000)
@@ -1157,7 +1183,7 @@ void *oam_session_run_lb_discover(void *args)
 
             /* We did not get any replies */
             if (got_reply == false) {
-                    oam_pr_info(current_params, "[%s] No replies to LB DISCOVERY ping, trans_id: %u\n",
+                    oam_pr_info(current_params, "[%s] No replies to LB DISCOVERY message, trans_id: %u\n",
                             current_params->if_name, current_session.transaction_id);
                     lb_discovery_replies = 0;
             }
@@ -1172,59 +1198,69 @@ void *oam_session_run_lb_discover(void *args)
                 /* Update frame and send on wire */
                 oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
 
-                if (current_session.pcp > 0 || current_session.vlan_id) {
+                /* Loop through the list of destination MAC addresses, build and send the frame */
+                for (int i = 0; i < current_session.dst_addr_count; i++) {
+                    if (current_session.pcp > 0 || current_session.vlan_id) {
 
-                    /* Build VLAN frame */
-                    uint8_t tx_frame[tx_vlan_frame_s];
-                    memset(&tx_frame, 0, tx_vlan_frame_s);
-                    oam_build_vlan_frame(
-                        dst_hwaddr,                                 /* Destination MAC */
-                        src_hwaddr,                                 /* MAC of local interface */
-                        ETHERTYPE_VLAN,                             /* Tag protocol type */
-                        current_session.pcp,                        /* Priority code point */
-                        current_session.dei,                        /* Drop eligible indicator */
-                        current_session.vlan_id,                    /* VLAN ID */
-                        ETHERTYPE_OAM,                              /* Ethernet protocol type */
-                        (uint8_t *)&lb_frame,                       /* Payload (LBM frame) */
-                        sizeof(lb_frame),                           /* Payload size */
-                        (uint8_t *)&tx_frame);                      /* Final frame */
+                        /* Build VLAN frame */
+                        uint8_t tx_frame[tx_vlan_frame_s];
+                        memset(&tx_frame, 0, tx_vlan_frame_s);
+                        oam_build_vlan_frame(
+                            current_session.dst_hwaddr_list[current_session.dst_addr_count],    /* Destination MAC */
+                            src_hwaddr,                                                         /* MAC of local interface */
+                            ETHERTYPE_VLAN,                                                     /* Tag protocol type */
+                            current_session.pcp,                                                /* Priority code point */
+                            current_session.dei,                                                /* Drop eligible indicator */
+                            current_session.vlan_id,                                            /* VLAN ID */
+                            ETHERTYPE_OAM,                                                      /* Ethernet protocol type */
+                            (uint8_t *)&lb_frame,                                               /* Payload (LBM frame) */
+                            sizeof(lb_frame),                                                   /* Payload size */
+                            (uint8_t *)&tx_frame);                                              /* Final frame */
 
-                    /* Send frame on wire */
-                    sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_vlan_frame_s,
-                                    0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
+                        /* Send frame on wire */
+                        sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_vlan_frame_s,
+                                        0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
 
-                    /* Did we send everything? */
-                    if (sent_bytes != (ssize_t)tx_vlan_frame_s) {
-                        oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
-                                        oam_perror(errno), sent_bytes);
-                        continue;
-                    }
-                } else {
+                        /* Did we send everything? */
+                        if (sent_bytes != (ssize_t)tx_vlan_frame_s) {
+                            oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
+                                            oam_perror(errno), sent_bytes);
+                            continue;
+                        }
+                    } else {
 
-                    /* Build ETH frame */
-                    uint8_t tx_frame[tx_eth_frame_s];
-                    memset(&tx_frame, 0, tx_eth_frame_s);
-                    oam_build_eth_frame(
-                        dst_hwaddr,                                 /* Destination MAC */
-                        src_hwaddr,                                 /* MAC of local interface */
-                        ETHERTYPE_OAM,                              /* Ethernet protocol type */
-                        (uint8_t *)&lb_frame,                       /* Payload (LBM frame) */
-                        sizeof(lb_frame),                           /* Payload size */
-                        (uint8_t *)&tx_frame);                      /* Final frame */
+                        /* Build ETH frame */
+                        uint8_t tx_frame[tx_eth_frame_s];
+                        memset(&tx_frame, 0, tx_eth_frame_s);
+                        oam_build_eth_frame(
+                            current_session.dst_hwaddr_list[current_session.dst_addr_count],    /* Destination MAC */
+                            src_hwaddr,                                                         /* MAC of local interface */
+                            ETHERTYPE_OAM,                                                      /* Ethernet protocol type */
+                            (uint8_t *)&lb_frame,                                               /* Payload (LBM frame) */
+                            sizeof(lb_frame),                                                   /* Payload size */
+                            (uint8_t *)&tx_frame);                                              /* Final frame */
 
-                    /* Send frame on wire */
-                    sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_eth_frame_s,
-                                    0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
+                        /* Send frame on wire */
+                        sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_eth_frame_s,
+                                        0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
 
-                    /* Did we send everything? */
-                    if (sent_bytes != (ssize_t)tx_eth_frame_s) {
-                        oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
-                                        oam_perror(errno), sent_bytes);
-                        continue;
+                        /* Did we send everything? */
+                        if (sent_bytes != (ssize_t)tx_eth_frame_s) {
+                            oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
+                                            oam_perror(errno), sent_bytes);
+                            continue;
+                        }
                     }
                 }
 
-                /* Get aprox timestamp of sent frame */
+                /*
+                 * Aproximate timestamp of last sent frame.
+                 * Assume we don't have a very long list of destination addresses,
+                 * so the reported timeout is not too far off.
+                 * 
+                 * Even if that's the case, we don't care too much about the actual timeout,
+                 * but mostly about the number of discovered peers.
+                 */
                 if (clock_gettime(CLOCK_MONOTONIC, &(current_session.time_sent)) == -1) {
                     oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
                     pthread_exit(NULL);
@@ -1354,6 +1390,12 @@ static void lb_session_cleanup(void *args)
     /* Close TX socket */
     if (current_session->tx_sockfd > 0)
         close(current_session->tx_sockfd);
+
+    /* Free memory for destination hwaddr list */
+    for (int i = 0; i < current_session->dst_addr_count; i++) {
+        if (current_session->dst_hwaddr_list[i] != NULL)
+            free(current_session->dst_hwaddr_list[i]);
+    }
 
     /* 
      * If a session is not successfully configured, we don't call pthread_join on it,
