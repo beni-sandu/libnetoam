@@ -34,6 +34,7 @@ struct oam_lb_pdu {
 struct oam_lb_session_params {
     char if_name[IFNAMSIZ];                                     /* Network interface name */
     char dst_mac[ETH_STR_LEN];                                  /* Destination MAC address in string format */
+    char **dst_mac_list;                                        /* List of destination MAC addresses in string format(OAM_SESSION_LB_DISCOVER) */
     uint32_t interval_ms;                                       /* Ping interval in miliseconds */
     uint32_t missed_consecutive_ping_threshold;                 /* Counter for consecutive missed pings */
     uint32_t ping_recovery_threshold;                           /* Recovery threshold counter */
@@ -46,6 +47,7 @@ struct oam_lb_session_params {
     bool dei;                                                   /* Drop eligible indicator */
     char log_file[PATH_MAX];                                    /* Log file path */
     bool is_multicast;                                          /* Flag for multicast sessions */
+    bool is_lb_discover;                                        /* Flag for OAM_SESSION_LB_DISCOVER case */
     bool enable_console_logs;                                   /* Output log messages to console too */
     bool log_utc;                                               /* Output log messages in UTC timezone */
 };
@@ -82,6 +84,7 @@ struct oam_lbm_timer {
 /* ETH-LB prototypes */
 void *oam_session_run_lbm(void *args);
 void *oam_session_run_lbr(void *args);
+void *oam_session_run_lb_discover(void *args);
 void oam_build_lb_frame(uint32_t transaction_id, uint8_t end_tlv, struct oam_lb_pdu *oam_frame);
 
 #endif //_ETH_LB_H

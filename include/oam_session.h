@@ -16,6 +16,7 @@ typedef long int oam_session_id;
 enum oam_session_type {
     OAM_SESSION_LBM = 0,
     OAM_SESSION_LBR = 1,
+    OAM_SESSION_LB_DISCOVER = 2,
 };
 
 struct oam_session_thread {

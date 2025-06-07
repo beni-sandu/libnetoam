@@ -69,6 +69,20 @@ static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeo
     return -1;
 }
 
+/* BP filter for our ethertypes */
+static struct sock_filter bpf_code[] = {
+    { 0x28, 0, 0, 0x0000000c }, // Load EtherType at offset 12 in Ethernet header
+    { 0x15, 0, 1, 0x00008809 }, // Check if EtherType == 0x8809 (OAM)
+    { 0x15, 0, 1, 0x00008100 }, // Check if EtherType == 0x8100 (VLAN)
+    { 0x6,  0, 0, 0x0000ffff }, // Accept packet
+    { 0x6,  0, 0, 0x00000000 }  // Reject packet
+};
+
+static struct sock_fprog bpf_program = {
+    .len = sizeof(bpf_code) / sizeof(bpf_code[0]),
+    .filter = bpf_code,
+};
+
 /* Entry point of a new OAM LBM session */
 void *oam_session_run_lbm(void *args)
 {
@@ -103,20 +117,6 @@ void *oam_session_run_lbm(void *args)
           .msg_iovlen = 1,
           .msg_control = &cmsg_buf,
           .msg_controllen = sizeof(cmsg_buf)
-    };
-
-    /* BPF filter for our ethertypes */
-    struct sock_filter bpf_code[] = {
-        { 0x28, 0, 0, 0x0000000c }, // Load EtherType at offset 12 in Ethernet header
-        { 0x15, 0, 1, 0x00008809 }, // Check if EtherType == 0x8809 (OAM)
-        { 0x15, 0, 1, 0x00008100 }, // Check if EtherType == 0x8100 (VLAN)
-        { 0x6,  0, 0, 0x0000ffff }, // Accept packet
-        { 0x6,  0, 0, 0x00000000 }  // Reject packet
-    };
-
-    struct sock_fprog bpf_program = {
-        .len = sizeof(bpf_code) / sizeof(bpf_code[0]),
-        .filter = bpf_code,
     };
 
     /* Initialize some session and timer data */
@@ -662,20 +662,6 @@ void *oam_session_run_lbr(void *args)
           .msg_controllen = sizeof(cmsg_buf)
     };
 
-    /* BPF filter for our ethertypes */
-    struct sock_filter bpf_code[] = {
-        { 0x28, 0, 0, 0x0000000c }, // Load EtherType at offset 12 in Ethernet header
-        { 0x15, 0, 1, 0x00008809 }, // Check if EtherType == 0x8809 (OAM)
-        { 0x15, 0, 1, 0x00008100 }, // Check if EtherType == 0x8100 (VLAN)
-        { 0x6,  0, 0, 0x0000ffff }, // Accept packet
-        { 0x6,  0, 0, 0x00000000 }  // Reject packet
-    };
-
-    struct sock_fprog bpf_program = {
-        .len = sizeof(bpf_code) / sizeof(bpf_code[0]),
-        .filter = bpf_code,
-    };
-
     memset(&current_session, 0, sizeof(current_session));
     current_session.meg_level = current_params->meg_level;
     current_session.tx_sockfd = -1;
@@ -921,6 +907,16 @@ void *oam_session_run_lbr(void *args)
     } // while (true)
 
     pthread_cleanup_pop(0);
+
+    /* Should never reach this */
+    return NULL;
+}
+
+/* Entry point of OAM_SESSION_LB_DISCOVER type */
+void *oam_session_run_lb_discover(void *args)
+{
+    struct oam_session_thread *current_thread = (struct oam_session_thread *)args;
+    struct oam_lb_session_params *current_params = current_thread->session_params;
 
     /* Should never reach this */
     return NULL;
