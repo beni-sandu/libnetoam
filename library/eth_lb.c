@@ -885,6 +885,439 @@ void *oam_session_run_lb_discover(void *args)
 {
     struct oam_session_thread *current_thread = (struct oam_session_thread *)args;
     struct oam_lb_session_params *current_params = current_thread->session_params;
+    struct itimerspec tx_ts;
+    struct sigevent tx_sev = {0};
+    struct oam_lb_session current_session;
+    int if_index = 0;
+    struct ether_header *eh;
+    struct oam_lb_pdu *lbm_frame_p;
+    int flag_enable = 1;
+    int ret = 0;
+    size_t tx_vlan_frame_s = sizeof(struct oam_vlan_header) + sizeof(struct oam_lb_pdu);
+    size_t tx_eth_frame_s = sizeof(struct ether_header) + sizeof(struct oam_lb_pdu);
+    ssize_t sent_bytes = 0;
+    uint8_t src_hwaddr[ETH_ALEN];
+    uint64_t lb_discovery_replies = 0;
+
+    /* Setup buffer and header structs for received packets */
+    uint8_t recv_buf[8192];
+	struct iovec recv_iov = {
+          .iov_base = recv_buf,
+          .iov_len = 8192,
+    };
+	union {
+          struct cmsghdr cmsg;
+          char buf[CMSG_SPACE(sizeof(struct tpacket_auxdata))];
+	} cmsg_buf;
+	struct msghdr recv_hdr = {
+          .msg_iov = &recv_iov,
+          .msg_iovlen = 1,
+          .msg_control = &cmsg_buf,
+          .msg_controllen = sizeof(cmsg_buf)
+    };
+
+    /* Initialize session */
+    memset(&current_session, 0, sizeof(current_session));
+    current_session.lbm_tx_timer = &tx_timer;
+    current_session.is_session_configured = false;
+    current_session.send_next_frame = true;
+    current_session.interval_ms = current_params->interval_ms;
+    current_session.meg_level = current_params->meg_level;
+    current_session.custom_vlan = false;
+    current_session.rx_sockfd = -1;
+    current_session.tx_sockfd = -1;
+    current_session.is_if_tagged = false;
+    current_session.current_params = current_params;
+    tx_timer.ts = &tx_ts;
+    tx_timer.timer_id = NULL;
+    tx_timer.is_timer_created = false;
+    current_session.is_lb_discover = current_params->is_lb_discover;
+
+    callback_status.cb_ret = OAM_LB_CB_DEFAULT;
+    callback_status.session_params = current_params;
+
+    /* Install session cleanup handler */
+    pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
+
+    /* Check for CAP_NET_RAW capability */
+    caps = cap_get_proc();
+    if (caps == NULL) {
+        oam_pr_error(current_params, "[%s:%d]: cap_get_proc: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    if (cap_get_flag(caps, CAP_NET_RAW, CAP_EFFECTIVE, &cap_val) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: cap_get_flag: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        cap_free(caps);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    if (cap_val != CAP_SET) {
+        cap_free(caps);
+        oam_pr_error(current_params, "[%s:%d]: Execution requires CAP_NET_RAW capability.\n", __FILE__, __LINE__);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* We don't need this anymore, so clean it */
+    cap_free(caps);
+
+    /* Configure network namespace */
+    if (strlen(current_params->net_ns) != 0) {
+        snprintf(ns_buf + strlen(ns_buf), PATH_MAX - strlen(ns_buf), "%s", current_params->net_ns);
+
+        ns_fd = open(ns_buf, O_RDONLY);
+
+        if (ns_fd == -1) {
+            oam_pr_error(current_params, "[%s:%d]: open ns fd: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+            current_thread->ret = -1;
+            sem_post(&current_thread->sem);
+            pthread_exit(NULL);
+        }
+
+        if (setns(ns_fd, CLONE_NEWNET) == -1) {
+            oam_pr_error(current_params, "[%s:%d] setns: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+            close(ns_fd);
+            current_thread->ret = -1;
+            sem_post(&current_thread->sem);
+            pthread_exit(NULL);
+        }
+
+        close(ns_fd);
+    }
+
+    /* Get source MAC address */
+    if (oam_get_eth_mac(current_params->if_name, src_hwaddr, &current_session) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: Error getting MAC address of local interface.\n", __FILE__, __LINE__);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Use a minimum of 5 seconds TX interval (similar to multicast mode) */
+    if (current_session.interval_ms < 5000)
+        current_session.interval_ms = 5000;
+
+    /* Get random value for transaction ID */
+    if (getrandom(&(current_session.transaction_id), sizeof(uint32_t), 0) == -1) {
+        oam_pr_error(current_params, "[%s:%d] getrandom: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Build oam common header for LMB frames */
+    oam_build_common_header(current_session.meg_level, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
+
+    /* Check if interface is a VLAN */
+    ret = oam_is_eth_vlan(current_params->if_name, &current_session);
+    if (ret == -1) {
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* If session is started on a VLAN, we ignore VLAN parameters, otherwise it will get double tagged */
+    if (ret == 1) {
+
+        /* If we a have priority code point or VLAN ID, we need to add a 802.1q header, even if VLAN ID is 0. */
+        if (current_params->pcp > 0 || current_params->vlan_id > 0) {
+            if (current_params->pcp > 7) {
+                oam_pr_debug(current_params, "[%s] allowed PCP range is 0 - 7, setting to 0.\n", current_params->if_name);
+                current_session.pcp = 0;
+            } else {
+                current_session.pcp = current_params->pcp;
+            }
+            current_session.vlan_id = current_params->vlan_id;
+            current_session.dei = current_params->dei;
+            current_session.custom_vlan = true;
+        }
+    } else
+        current_session.is_if_tagged = true;
+
+    /* Initial TX timer configuration */
+    tx_sev.sigev_notify = SIGEV_THREAD;                         /* Notify via thread */
+    tx_sev.sigev_notify_function = &lbm_timeout_handler;        /* Handler function */
+    tx_sev.sigev_notify_attributes = NULL;                      /* Could be pointer to pthread_attr_t structure */
+    tx_sev.sigev_value.sival_ptr = &current_session;            /* Pointer passed to handler */
+
+    /* Configure TX interval */
+    tx_ts.it_interval.tv_sec = current_session.interval_ms / 1000;
+    tx_ts.it_interval.tv_nsec = current_session.interval_ms % 1000 * 1000000;
+    tx_ts.it_value.tv_sec = current_session.interval_ms / 1000;
+    tx_ts.it_value.tv_nsec = current_session.interval_ms % 1000 * 1000000;
+
+    /* Create TX timer */
+    if (timer_create(CLOCK_MONOTONIC, &tx_sev, &(tx_timer.timer_id)) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: timer_create: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Timer should be created, but we still get a NULL pointer sometimes */
+    tx_timer.is_timer_created = true;
+    oam_pr_debug(current_params, "TX timer ID: %p\n", tx_timer.timer_id);
+
+    /* Create RX socket */
+    if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Enable packet auxdata */
+    if (setsockopt(current_session.rx_sockfd, SOL_PACKET, PACKET_AUXDATA, &flag_enable, sizeof(flag_enable)) < 0) {
+        oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Get interface index */
+    if_index = if_nametoindex(current_params->if_name);
+    if (if_index == 0) {
+        oam_pr_error(current_params, "[%s:%d]: if_nametoindex: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Setup socket address */
+    memset(&rx_sll, 0, sizeof(struct sockaddr_ll));
+    rx_sll.sll_family = AF_PACKET;
+    rx_sll.sll_ifindex = if_index;
+    rx_sll.sll_protocol = htons(ETH_P_ALL);
+
+    /* Bind RX socket */
+    if (bind(current_session.rx_sockfd, (struct sockaddr *)&rx_sll, sizeof(rx_sll)) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Attach filter */
+    if (setsockopt(current_session.rx_sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_program, sizeof(bpf_program)) < 0) {
+        oam_pr_error(current_params, "[%s:%d]: setsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Create TX socket */
+    if ((current_session.tx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_OAM))) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: socket: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Setup RX socket address */
+    memset(&tx_sll, 0, sizeof(struct sockaddr_ll));
+    tx_sll.sll_family = AF_PACKET;
+    tx_sll.sll_ifindex = if_index;
+    tx_sll.sll_protocol = htons(ETHERTYPE_OAM);
+
+    /* Bind TX socket */
+    if (bind(current_session.tx_sockfd, (struct sockaddr *)&tx_sll, sizeof(tx_sll)) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: bind: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    /* Session configuration is successful, return a valid session id */
+    current_session.is_session_configured = true;
+
+    /* Start timer */
+    if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: timer_settime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
+
+    bool got_reply = true;
+    bool frame_sent = false;
+
+    oam_pr_debug(current_params, "LB DISCOVERY session configured successfully.\n");
+    sem_post(&current_thread->sem);
+
+    /* Processing loop for incoming frames */
+    while (true) {
+
+        if (current_session.send_next_frame == true) {
+
+            /* We did not get any replies */
+            if (got_reply == false) {
+                    oam_pr_info(current_params, "[%s] No replies to LB DISCOVERY ping, trans_id: %u\n",
+                            current_params->if_name, current_session.transaction_id);
+                    lb_discovery_replies = 0;
+            }
+            frame_sent = false;
+            got_reply = false;
+
+            if (frame_sent == false) {
+
+                /* Bump transaction id */
+                current_session.transaction_id++;
+
+                /* Update frame and send on wire */
+                oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
+
+                if (current_session.pcp > 0 || current_session.vlan_id) {
+
+                    /* Build VLAN frame */
+                    uint8_t tx_frame[tx_vlan_frame_s];
+                    memset(&tx_frame, 0, tx_vlan_frame_s);
+                    oam_build_vlan_frame(
+                        dst_hwaddr,                                 /* Destination MAC */
+                        src_hwaddr,                                 /* MAC of local interface */
+                        ETHERTYPE_VLAN,                             /* Tag protocol type */
+                        current_session.pcp,                        /* Priority code point */
+                        current_session.dei,                        /* Drop eligible indicator */
+                        current_session.vlan_id,                    /* VLAN ID */
+                        ETHERTYPE_OAM,                              /* Ethernet protocol type */
+                        (uint8_t *)&lb_frame,                       /* Payload (LBM frame) */
+                        sizeof(lb_frame),                           /* Payload size */
+                        (uint8_t *)&tx_frame);                      /* Final frame */
+
+                    /* Send frame on wire */
+                    sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_vlan_frame_s,
+                                    0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
+
+                    /* Did we send everything? */
+                    if (sent_bytes != (ssize_t)tx_vlan_frame_s) {
+                        oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
+                                        oam_perror(errno), sent_bytes);
+                        continue;
+                    }
+                } else {
+
+                    /* Build ETH frame */
+                    uint8_t tx_frame[tx_eth_frame_s];
+                    memset(&tx_frame, 0, tx_eth_frame_s);
+                    oam_build_eth_frame(
+                        dst_hwaddr,                                 /* Destination MAC */
+                        src_hwaddr,                                 /* MAC of local interface */
+                        ETHERTYPE_OAM,                              /* Ethernet protocol type */
+                        (uint8_t *)&lb_frame,                       /* Payload (LBM frame) */
+                        sizeof(lb_frame),                           /* Payload size */
+                        (uint8_t *)&tx_frame);                      /* Final frame */
+
+                    /* Send frame on wire */
+                    sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_eth_frame_s,
+                                    0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
+
+                    /* Did we send everything? */
+                    if (sent_bytes != (ssize_t)tx_eth_frame_s) {
+                        oam_pr_error(current_params, "[%s:%d]: sendto error: %s. Only %ld bytes sent.\n", __FILE__, __LINE__,
+                                        oam_perror(errno), sent_bytes);
+                        continue;
+                    }
+                }
+
+                /* Get aprox timestamp of sent frame */
+                if (clock_gettime(CLOCK_MONOTONIC, &(current_session.time_sent)) == -1) {
+                    oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                    pthread_exit(NULL);
+                }
+
+                if (current_session.is_if_tagged == true)
+                    oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
+                        dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
+                else
+                    oam_pr_debug(current_params, "[%s.%d] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
+                        current_params->vlan_id, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5],
+                        current_session.transaction_id);
+
+                current_session.send_next_frame = false;
+                frame_sent = true;
+            } // if (frame_sent == false)
+        } // if (current_session.send_next_frame == true)
+
+        while (true && (current_session.send_next_frame != true)) {
+
+            /* Check for incoming data */
+            if (recvmsg_ppoll(current_session.rx_sockfd, &recv_hdr, current_session.interval_ms, &current_session) > 0) {
+
+                /* Get aprox timestamp of received frame */
+                if (clock_gettime(CLOCK_MONOTONIC, &current_session.time_received) == -1) {
+                    oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                    pthread_exit(NULL);
+                }
+
+                /* Get ETH header */
+                eh = (struct ether_header *)recv_buf;
+
+                /* If frame is not addressed to this interface, drop it */
+                if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+                    continue;
+
+                /* Is the received frame tagged? */
+                if (oam_is_frame_tagged(&recv_hdr, &recv_auxdata) == true) {
+
+                    /*
+                    * If frame is tagged, but we didn't add a custom header ourselves, it should be dropped,
+                    * as it is intended for a VLAN ETH that has this interface as a primary one.
+                     */
+                    if (current_session.custom_vlan == false)
+                        continue;
+                    else
+                        /* If we did add a custom tag, check for correct VLAN ID */
+                        if ((recv_auxdata.tp_vlan_tci & 0xfff) != current_session.vlan_id)
+                            continue;
+                }
+
+                /* If frame is not OAM LBR, discard it */
+                lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+                if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
+                    continue;
+
+                /* Check MEG level*/
+                if (((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
+                    oam_pr_debug(current_params, "Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                                 current_session.meg_level);
+                    continue;
+                }
+
+                /* Check transaction ID */
+                if (ntohl(lbm_frame_p->transaction_id) != current_session.transaction_id) {
+                    oam_pr_debug(current_params, "Ignoring LBR with different trans_id = %u\n", ntohl(lbm_frame_p->transaction_id));
+                    continue;
+                }
+
+                lb_discovery_replies++;
+
+                /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
+                if (current_session.is_if_tagged == true)
+                    oam_pr_info(current_params, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
+                            current_params->if_name, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
+                            eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
+                            ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
+                            (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
+                else
+                    oam_pr_info(current_params, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
+                            current_params->if_name, current_session.vlan_id, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
+                            eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
+                            ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
+                            (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
+
+                got_reply = 1;
+                frame_sent = 0;
+
+            } // if (recvmsg_ppoll > 0)
+        }
+    } // while (true)
+
+    pthread_cleanup_pop(0);
 
     /* Should never reach this */
     return NULL;
