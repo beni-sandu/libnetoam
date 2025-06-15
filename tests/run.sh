@@ -80,24 +80,29 @@ sleep 2
 test_multicast=test_session_multicast
 ./${test_multicast} > ./${test_multicast}.out 2> ./${test_multicast}.err
 
-# Get the MAC adresses of the LBR peers
-interfaces=( lbr1-peer lbr2-peer lbr3-peer )
+if_meg_0=( lbr1-peer lbr2-peer )
+if_meg_1=( lbr3-peer )
+
+# Get MACs
 declare -A macs
-for iface in "${interfaces[@]}"; do
-    mac=$(ip link show "$iface" | awk '/link\/ether/ {print $2}')
-    macs["$iface"]="$mac"
+for iface in "${if_meg_0[@]}" "${if_meg_1[@]}"; do
+    macs["$iface"]=$(ip link show "$iface" | awk '/link\/ether/ {print $2}')
 done
 
-# We should have 1 reply from each LBR peer
-all_found=1
-for iface in "${interfaces[@]}"; do
-    mac=${macs["$iface"]}
-    if ! grep -qi "Got LBR from: $mac," "${test_multicast}.out"; then
-        all_found=0
-    fi
+# Check LBR replies
+log="${test_multicast}.out"
+valid=0
+invalid=0
+
+for iface in "${if_meg_0[@]}"; do
+    grep -qi "Got LBR from: ${macs[$iface]}," "$log" && valid=1
 done
 
-if [ $all_found -eq 1 ]; then
+for iface in "${if_meg_1[@]}"; do
+    grep -qi "Got LBR from: ${macs[$iface]}," "$log" && invalid=1
+done
+
+if [[ $valid -eq 1 && $invalid -eq 0 ]]; then
     echo "PASS: ${test_multicast}"
 else
     echo "FAIL: ${test_multicast}"
