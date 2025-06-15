@@ -5,8 +5,9 @@ All relevant changes are documented in this file.
 
 v0.1.2 released TBD
 -------------
+* fix multicast address range
 * remove libnet dependency
-* add a ETH-LB multicast testcase
+* add an ETH-LB multicast testcase
 * update deprecated random()/usleep() interfaces
 * improve memory leak testcase
 

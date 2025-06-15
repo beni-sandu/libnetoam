@@ -212,17 +212,22 @@ void *oam_session_run_lbm(void *args)
 
         /* If session is multicast, we need to adjust some parameters */
 
-        /* Set destination ETH address to broadcast */
-        memset(dst_hwaddr, 0xff, ETH_ALEN);
+        /* Set multicast destination address (section 10.1 from ITU-T G.8013/Y.1731) */
+        dst_hwaddr[0] = 0x01;
+        dst_hwaddr[1] = 0x80;
+        dst_hwaddr[2] = 0xC2;
+        dst_hwaddr[3] = 0x00;
+        dst_hwaddr[4] = 0x00;
+        dst_hwaddr[5] = 0x30 + current_session.meg_level;
         current_session.is_multicast = true;
 
         /* Thresholds and callback are not used during multicast */
         current_params->missed_consecutive_ping_threshold = 0;
         current_params->ping_recovery_threshold = 0;
         current_params->is_oneshot = false;
-        current_params->callback = NULL;
+        current_params->callback = NULL; // TODO: we might need a callback here
 
-        /* We should probably ignore VLAN headers too? */
+        /* We should probably ignore VLAN headers too - TODO: check VLAN handling in this scenario */
         current_params->vlan_id = 0;
         current_params->pcp = 0;
 
@@ -630,7 +635,6 @@ void *oam_session_run_lbr(void *args)
     struct ether_header *eh;
     struct oam_lb_pdu *lbr_frame_p;
     struct oam_lb_session current_session;
-    const uint8_t eth_broadcast[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     size_t tx_eth_frame_s = sizeof(struct ether_header) + sizeof(struct oam_lb_pdu);
     ssize_t sent_bytes = 0;
 
@@ -836,8 +840,10 @@ void *oam_session_run_lbr(void *args)
             /* Is frame addressed to this interface? */
             if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0) {
 
-                /* Is it broadcast or multicast? */
-                if((memcmp(eh->ether_dhost, eth_broadcast, ETH_ALEN) == 0) || (eh->ether_dhost[0] == 0x1))
+                /* Is it multicast? */
+                if (eh->ether_dhost[0] == 0x01 && eh->ether_dhost[1] == 0x80 &&
+                    eh->ether_dhost[2] == 0xC2 && eh->ether_dhost[3] == 0x00 &&
+                    eh->ether_dhost[4] == 0x00 && eh->ether_dhost[5] == 0x30 + current_session.meg_level) 
                     current_session.is_frame_multicast = true;
                 else
                     /* Otherwise drop it */
@@ -869,7 +875,7 @@ void *oam_session_run_lbr(void *args)
                 sizeof(lb_frame),                           /* Payload size */
                 (uint8_t *)&tx_frame);                      /* Final frame */
 
-            /* If frame is multicast/broadcast, add a random delay between 0s - 1s as per standard */
+            /* If frame is multicast, add a random delay between 0s - 1s as per standard */
             if (current_session.is_frame_multicast == true) {
                 struct timespec ts;
                 unsigned int random_value;
