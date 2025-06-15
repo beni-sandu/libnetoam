@@ -442,10 +442,10 @@ void *oam_session_run_lbm(void *args)
                         ETHERTYPE_OAM,                              /* Ethernet protocol type */
                         (uint8_t *)&lb_frame,                       /* Payload (LBM frame) */
                         sizeof(lb_frame),                           /* Payload size */
-                        (uint8_t *)&tx_frame);                      /* Final frame */
+                        tx_frame);                                  /* Final frame */
 
                     /* Send frame on wire */
-                    sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_vlan_frame_s,
+                    sent_bytes = sendto(current_session.tx_sockfd, tx_frame, tx_vlan_frame_s,
                                     0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
 
                     /* Did we send everything? */
@@ -465,10 +465,10 @@ void *oam_session_run_lbm(void *args)
                         ETHERTYPE_OAM,                              /* Ethernet protocol type */
                         (uint8_t *)&lb_frame,                       /* Payload (LBM frame) */
                         sizeof(lb_frame),                           /* Payload size */
-                        (uint8_t *)&tx_frame);                      /* Final frame */
+                        tx_frame);                                  /* Final frame */
 
                     /* Send frame on wire */
-                    sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_eth_frame_s,
+                    sent_bytes = sendto(current_session.tx_sockfd, tx_frame, tx_eth_frame_s,
                                     0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
 
                     /* Did we send everything? */
@@ -839,7 +839,7 @@ void *oam_session_run_lbr(void *args)
                 ETHERTYPE_OAM,                              /* Ethernet protocol type */
                 (uint8_t *)&lb_frame,                       /* Payload (LBM frame) */
                 sizeof(lb_frame),                           /* Payload size */
-                (uint8_t *)&tx_frame);                      /* Final frame */
+                tx_frame);                                  /* Final frame */
 
             /* If frame is multicast, add a random delay between 0s - 1s as per standard */
             if (current_session.is_frame_multicast == true) {
@@ -862,7 +862,7 @@ void *oam_session_run_lbr(void *args)
             }
 
             /* Send frame on wire */
-            sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_eth_frame_s,
+            sent_bytes = sendto(current_session.tx_sockfd, tx_frame, tx_eth_frame_s,
                             0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
 
             /* Did we send everything? */
@@ -931,7 +931,7 @@ void *oam_session_run_lb_discover(void *args)
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
-    current_session.is_lb_discover = current_params->is_lb_discover;
+    current_session.dst_hwaddr_list = NULL;
     current_session.dst_addr_count = 0;
 
     callback_status.cb_ret = OAM_LB_CB_DEFAULT;
@@ -1004,26 +1004,43 @@ void *oam_session_run_lb_discover(void *args)
      * Validate all the MAC addresses in the provided list.
      * If an invalid MAC address is found, session is terminated with an error message.
      */
-    while(current_params->dst_mac_list[current_session.dst_addr_count] != NULL) {
-        current_session.dst_hwaddr_list[current_session.dst_addr_count] = malloc(ETH_ALEN);
+    while (current_params->dst_mac_list[current_session.dst_addr_count] != NULL) {
+        uint8_t **tmp = realloc(current_session.dst_hwaddr_list,
+                        (current_session.dst_addr_count + 1) * sizeof(uint8_t *));
+        if (!tmp) {
+            oam_pr_error(current_params, "[%s:%d]: realloc failed.\n", __FILE__, __LINE__);
+            current_thread->ret = -1;
+            sem_post(&current_thread->sem);
+            pthread_exit(NULL);
+        }
 
+        current_session.dst_hwaddr_list = tmp;
+
+        current_session.dst_hwaddr_list[current_session.dst_addr_count] = malloc(ETH_ALEN * sizeof(uint8_t));
         if (!current_session.dst_hwaddr_list[current_session.dst_addr_count]) {
-            oam_pr_error(current_params, "[%s:%d]: Memory allocation for MAC address failed.\n", __FILE__, __LINE__);
+            oam_pr_error(current_params, "[%s:%d]: malloc for MAC failed.\n", __FILE__, __LINE__);
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
             pthread_exit(NULL);
         }
 
-        if (oam_hwaddr_str2bin(current_params->dst_mac_list[current_session.dst_addr_count], current_session.dst_hwaddr_list[current_session.dst_addr_count]) == -1) {
-            oam_pr_error(current_params, "[%s:%d]: Invalid destination MAC address.\n", __FILE__, __LINE__);
+        if (oam_hwaddr_str2bin(current_params->dst_mac_list[current_session.dst_addr_count],
+                                current_session.dst_hwaddr_list[current_session.dst_addr_count]) == -1) {
+            oam_pr_error(current_params, "[%s:%d]: Invalid MAC address: %s\n",
+                        __FILE__, __LINE__, current_params->dst_mac_list[current_session.dst_addr_count]);
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
             pthread_exit(NULL);
         }
+
+        oam_pr_debug(current_params, "Loaded valid MAC address from the list: %02X:%02X:%02X:%02X:%02X:%02X.\n",
+            current_session.dst_hwaddr_list[current_session.dst_addr_count][0], current_session.dst_hwaddr_list[current_session.dst_addr_count][1],
+            current_session.dst_hwaddr_list[current_session.dst_addr_count][2], current_session.dst_hwaddr_list[current_session.dst_addr_count][3],
+            current_session.dst_hwaddr_list[current_session.dst_addr_count][4], current_session.dst_hwaddr_list[current_session.dst_addr_count][5]);
         current_session.dst_addr_count++;
     }
 
-    oam_pr_debug(current_params, "Found %d valid MAC addresses in the provided list.\n", current_session.dst_addr_count);
+    oam_pr_debug(current_params, "Loaded %d valid MAC addresses from the provided list.\n", current_session.dst_addr_count);
 
     /* Use a minimum of 5 seconds TX interval (similar to multicast mode) */
     if (current_session.interval_ms < 5000)
@@ -1199,14 +1216,14 @@ void *oam_session_run_lb_discover(void *args)
                 oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
 
                 /* Loop through the list of destination MAC addresses, build and send the frame */
-                for (int i = 0; i < current_session.dst_addr_count; i++) {
+                for (size_t i = 0; i < current_session.dst_addr_count; i++) {
                     if (current_session.pcp > 0 || current_session.vlan_id) {
 
                         /* Build VLAN frame */
                         uint8_t tx_frame[tx_vlan_frame_s];
                         memset(&tx_frame, 0, tx_vlan_frame_s);
                         oam_build_vlan_frame(
-                            current_session.dst_hwaddr_list[current_session.dst_addr_count],    /* Destination MAC */
+                            current_session.dst_hwaddr_list[i],                                 /* Destination MAC */
                             src_hwaddr,                                                         /* MAC of local interface */
                             ETHERTYPE_VLAN,                                                     /* Tag protocol type */
                             current_session.pcp,                                                /* Priority code point */
@@ -1215,10 +1232,10 @@ void *oam_session_run_lb_discover(void *args)
                             ETHERTYPE_OAM,                                                      /* Ethernet protocol type */
                             (uint8_t *)&lb_frame,                                               /* Payload (LBM frame) */
                             sizeof(lb_frame),                                                   /* Payload size */
-                            (uint8_t *)&tx_frame);                                              /* Final frame */
+                            tx_frame);                                                          /* Final frame */
 
                         /* Send frame on wire */
-                        sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_vlan_frame_s,
+                        sent_bytes = sendto(current_session.tx_sockfd, tx_frame, tx_vlan_frame_s,
                                         0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
 
                         /* Did we send everything? */
@@ -1233,15 +1250,15 @@ void *oam_session_run_lb_discover(void *args)
                         uint8_t tx_frame[tx_eth_frame_s];
                         memset(&tx_frame, 0, tx_eth_frame_s);
                         oam_build_eth_frame(
-                            current_session.dst_hwaddr_list[current_session.dst_addr_count],    /* Destination MAC */
+                            current_session.dst_hwaddr_list[i],                                 /* Destination MAC */
                             src_hwaddr,                                                         /* MAC of local interface */
                             ETHERTYPE_OAM,                                                      /* Ethernet protocol type */
                             (uint8_t *)&lb_frame,                                               /* Payload (LBM frame) */
                             sizeof(lb_frame),                                                   /* Payload size */
-                            (uint8_t *)&tx_frame);                                              /* Final frame */
+                            tx_frame);                                                          /* Final frame */
 
                         /* Send frame on wire */
-                        sent_bytes = sendto(current_session.tx_sockfd, &tx_frame, tx_eth_frame_s,
+                        sent_bytes = sendto(current_session.tx_sockfd, tx_frame, tx_eth_frame_s,
                                         0, (struct sockaddr *)&tx_sll, sizeof(tx_sll));
 
                         /* Did we send everything? */
@@ -1268,10 +1285,16 @@ void *oam_session_run_lb_discover(void *args)
 
                 if (current_session.is_if_tagged == true)
                     oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
-                        dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5], current_session.transaction_id);
+                        current_session.dst_hwaddr_list[i][0], current_session.dst_hwaddr_list[i][1],
+                        current_session.dst_hwaddr_list[i][2], current_session.dst_hwaddr_list[i][3],
+                        current_session.dst_hwaddr_list[i][4], current_session.dst_hwaddr_list[i][5],
+                        current_session.transaction_id);
                 else
                     oam_pr_debug(current_params, "[%s.%d] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
-                        current_params->vlan_id, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5],
+                        current_params->vlan_id, current_session.dst_hwaddr_list[i][0],
+                        current_session.dst_hwaddr_list[i][1], current_session.dst_hwaddr_list[i][2],
+                        current_session.dst_hwaddr_list[i][3], current_session.dst_hwaddr_list[i][4],
+                        current_session.dst_hwaddr_list[i][5],
                         current_session.transaction_id);
 
                 current_session.send_next_frame = false;
@@ -1392,9 +1415,14 @@ static void lb_session_cleanup(void *args)
         close(current_session->tx_sockfd);
 
     /* Free memory for destination hwaddr list */
-    for (int i = 0; i < current_session->dst_addr_count; i++) {
-        if (current_session->dst_hwaddr_list[i] != NULL)
+    if (current_session->dst_hwaddr_list) {
+        for (size_t i = 0; i < current_session->dst_addr_count; i++) {
             free(current_session->dst_hwaddr_list[i]);
+            current_session->dst_hwaddr_list[i] = NULL;
+        }
+        free(current_session->dst_hwaddr_list);
+        current_session->dst_hwaddr_list = NULL;
+        current_session->dst_addr_count = 0;
     }
 
     /* 

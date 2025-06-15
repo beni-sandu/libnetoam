@@ -73,7 +73,7 @@ struct oam_lb_session {
     bool is_if_tagged;                                          /* Flag describing if session is started on a VLAN */
     struct oam_lb_session_params *current_params;               /* Pointer to session parameters */
     uint8_t **dst_hwaddr_list;                                  /* List of destination MAC addresses in binary form */
-    int dst_addr_count;                                         /* Number of destination MAC addresses from list */
+    size_t dst_addr_count;                                      /* Number of destination MAC addresses from list */
 };
 
 /* LBM session timer */
