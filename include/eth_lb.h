@@ -47,7 +47,6 @@ struct oam_lb_session_params {
     bool dei;                                                   /* Drop eligible indicator */
     char log_file[PATH_MAX];                                    /* Log file path */
     bool is_multicast;                                          /* Flag for multicast sessions */
-    bool is_lb_discover;                                        /* Flag for OAM_SESSION_LB_DISCOVER case */
     bool enable_console_logs;                                   /* Output log messages to console too */
     bool log_utc;                                               /* Output log messages in UTC timezone */
 };
@@ -68,7 +67,6 @@ struct oam_lb_session {
     bool is_frame_multicast;                                    /* Flag for multicast frames */
     uint32_t interval_ms;                                       /* Ping interval in miliseconds */
     bool is_multicast;                                          /* Flag for multicast sessions */
-    bool is_lb_discover;                                        /* Flag for OAM_SESSION_LB_DISCOVER case */
     uint8_t meg_level;                                          /* Maintenance entity group level */
     bool custom_vlan;                                           /* Flag for custom VLAN */
     bool is_if_tagged;                                          /* Flag describing if session is started on a VLAN */

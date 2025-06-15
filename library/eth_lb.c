@@ -963,7 +963,6 @@ void *oam_session_run_lb_discover(void *args)
     tx_timer.ts = &tx_ts;
     tx_timer.timer_id = NULL;
     tx_timer.is_timer_created = false;
-    current_session.is_lb_discover = current_params->is_lb_discover;
     current_session.dst_hwaddr_list = NULL;
     current_session.dst_addr_count = 0;
 
