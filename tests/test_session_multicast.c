@@ -25,7 +25,7 @@ int main(void)
 
     struct oam_lb_session_params s3_lbr_params = {
         .if_name = "lbr3-peer",
-        .meg_level = 0,
+        .meg_level = 1,
     };
 
     printf("Running with: %s\n", netoam_lib_version());
