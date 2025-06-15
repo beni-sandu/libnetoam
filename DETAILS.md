@@ -4,9 +4,7 @@ Supported OAM protocols
 -----------------------
 * ETH-LB (Ethernet loopback function)
 
-There are two types of LB sessions, LBM (will send loopback messages) and LBR (will send loopback replies).
-
-Supported parameters for a LBM session
+Supported parameters for a LBM session (OAM_SESSION_LBM)
 --------------------------------------
 - if_name - Name of interface to use for the session
 - dst_mac - Destination hardware address
@@ -25,7 +23,7 @@ Supported parameters for a LBM session
 - enable_console_logs - If enabled, print messages to console too
 - log_utc - If enabled, print log messages in UTC timezone
 
-Supported parameters for a LBR session
+Supported parameters for a LBR session (OAM_SESSION_LBR)
 --------------------------------------
 - if_name - Name of interface to use for the session
 - meg_level - Maintenance entity group level
@@ -33,6 +31,16 @@ Supported parameters for a LBR session
 - net_ns - Network namespace
 - enable_console_logs - If enabled, print messages to console too
 - log_utc - If enabled, print log messages in UTC timezone
+
+Supported parameters for a LB discovery session (OAM_SESSION_LB_DISCOVER)
+--------------------------------------
+- if_name - Name of interface to use for the session
+- meg_level - Maintenance entity group level
+- log_file - Path to log file used to store log/error info
+- net_ns - Network namespace
+- enable_console_logs - If enabled, print messages to console too
+- log_utc - If enabled, print log messages in UTC timezone
+- dst_mac_list - List of MAC addresses in string format used to send LBM pings to (**NEEDS TO BE NULL TERMINATED**)
 
 Example of a parameter structure for a LBM session:
 
@@ -56,6 +64,7 @@ Library interfaces
  * @session_type:           type of session, currently can be:
  *                              - OAM_SESSION_LBM
  *                              - OAM_SESSION_LBR
+ *                              - OAM_SESSION_LB_DISCOVER
  * 
  * Returns a valid session id on successful creation or
  * -1 if an error occured.
