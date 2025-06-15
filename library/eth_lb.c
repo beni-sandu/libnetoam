@@ -144,6 +144,12 @@ void *oam_session_run_lbm(void *args)
     callback_status.cb_ret = OAM_LB_CB_DEFAULT;
     callback_status.session_params = current_params;
 
+    /* Sanity check */
+    if (current_session.meg_level > 7) {
+        oam_pr_debug(current_params, "[%s] allowed MEG level range is 0 - 7, setting to 0.\n", current_params->if_name);
+        current_session.meg_level = 0;
+    }
+
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
 
@@ -675,6 +681,12 @@ void *oam_session_run_lbr(void *args)
     current_session.tx_sockfd = -1;
     current_session.rx_sockfd = -1;
     current_session.current_params = current_params;
+
+    /* Sanity check */
+    if (current_session.meg_level > 7) {
+        oam_pr_debug(current_params, "[%s] allowed MEG level range is 0 - 7, setting to 0.\n", current_params->if_name);
+        current_session.meg_level = 0;
+    }
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
