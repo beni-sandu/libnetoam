@@ -5,10 +5,25 @@
  */
 
 #include <arpa/inet.h>
+#include <linux/filter.h>
 #include <linux/if_ether.h>
 
 #include "../include/oam_frame.h"
 #include "../include/libnetoam.h"
+
+/* OAM BP filter */
+struct sock_filter bpf_code[] = {
+    { 0x28, 0, 0, 0x0000000c }, // Load EtherType at offset 12 in Ethernet header
+    { 0x15, 0, 1, 0x00008809 }, // Check if EtherType == 0x8809 (OAM)
+    { 0x15, 0, 1, 0x00008100 }, // Check if EtherType == 0x8100 (VLAN)
+    { 0x6,  0, 0, 0x0000ffff }, // Accept packet
+    { 0x6,  0, 0, 0x00000000 }  // Reject packet
+};
+
+struct sock_fprog bpf_program = {
+    .len = sizeof(bpf_code) / sizeof(bpf_code[0]),
+    .filter = bpf_code,
+};
 
 void oam_build_eth_frame(uint8_t *dst_addr, uint8_t *src_addr, uint16_t type, uint8_t *payload, size_t payload_s,
         uint8_t *frame)

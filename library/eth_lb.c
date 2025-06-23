@@ -26,6 +26,8 @@ static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeo
 void *oam_session_run_lbr(void *args);
 void *oam_session_run_lbm(void *args);
 
+extern struct sock_fprog bpf_program;
+
 /* Per thread variables */
 static __thread struct oam_lbm_timer tx_timer;                     /* TX timer */
 static __thread struct oam_lb_pdu lb_frame;
@@ -103,20 +105,6 @@ void *oam_session_run_lbm(void *args)
           .msg_iovlen = 1,
           .msg_control = &cmsg_buf,
           .msg_controllen = sizeof(cmsg_buf)
-    };
-
-    /* BPF filter for our ethertypes */
-    struct sock_filter bpf_code[] = {
-        { 0x28, 0, 0, 0x0000000c }, // Load EtherType at offset 12 in Ethernet header
-        { 0x15, 0, 1, 0x00008809 }, // Check if EtherType == 0x8809 (OAM)
-        { 0x15, 0, 1, 0x00008100 }, // Check if EtherType == 0x8100 (VLAN)
-        { 0x6,  0, 0, 0x0000ffff }, // Accept packet
-        { 0x6,  0, 0, 0x00000000 }  // Reject packet
-    };
-
-    struct sock_fprog bpf_program = {
-        .len = sizeof(bpf_code) / sizeof(bpf_code[0]),
-        .filter = bpf_code,
     };
 
     /* Initialize some session and timer data */
@@ -243,7 +231,7 @@ void *oam_session_run_lbm(void *args)
     }
 
     /* Build oam common header for LMB frames */
-    oam_build_common_header(current_session.meg_level, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
+    oam_build_common_header(current_session.meg_level, OAM_HDR_PROT_VERSION, OAM_OP_LBM, OAM_HDR_NO_FLAGS, OAM_HDR_TLV_OFFSET, &lb_frame.oam_header);
 
     /* Check if interface is a VLAN */
     ret = oam_is_eth_vlan(current_params->if_name, &current_session);
@@ -437,7 +425,7 @@ void *oam_session_run_lbm(void *args)
                 current_session.transaction_id++;
 
                 /* Update frame and send on wire */
-                oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
+                oam_build_lb_frame(current_session.transaction_id, OAM_HDR_END_TLV, &lb_frame);
 
                 if (current_session.pcp > 0 || current_session.vlan_id) {
 
@@ -646,20 +634,6 @@ void *oam_session_run_lbr(void *args)
           .msg_iovlen = 1,
           .msg_control = &cmsg_buf,
           .msg_controllen = sizeof(cmsg_buf)
-    };
-
-    /* BPF filter for our ethertypes */
-    struct sock_filter bpf_code[] = {
-        { 0x28, 0, 0, 0x0000000c }, // Load EtherType at offset 12 in Ethernet header
-        { 0x15, 0, 1, 0x00008809 }, // Check if EtherType == 0x8809 (OAM)
-        { 0x15, 0, 1, 0x00008100 }, // Check if EtherType == 0x8100 (VLAN)
-        { 0x6,  0, 0, 0x0000ffff }, // Accept packet
-        { 0x6,  0, 0, 0x00000000 }  // Reject packet
-    };
-
-    struct sock_fprog bpf_program = {
-        .len = sizeof(bpf_code) / sizeof(bpf_code[0]),
-        .filter = bpf_code,
     };
 
     memset(&current_session, 0, sizeof(current_session));

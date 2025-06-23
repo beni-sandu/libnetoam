@@ -7,8 +7,14 @@
 #ifndef _OAM_FRAME_H
 #define _OAM_FRAME_H
 
-#include <stdint.h>
 #include <linux/if_ether.h>
+#include <stdint.h>
+
+/* Common OAM header fields */
+#define OAM_HDR_PROT_VERSION (0)
+#define OAM_HDR_NO_FLAGS (0)
+#define OAM_HDR_TLV_OFFSET (4U)
+#define OAM_HDR_END_TLV (0)
 
 /*
  * OAM OpCodes
