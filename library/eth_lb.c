@@ -210,8 +210,6 @@ void *oam_session_run_lbm(void *args)
     /* Get destination MAC address */
     if (current_params->is_multicast == true) {
 
-        /* If session is multicast, we need to adjust some parameters */
-
         /* Set multicast destination address (section 10.1 from ITU-T G.8013/Y.1731) */
         dst_hwaddr[0] = 0x01;
         dst_hwaddr[1] = 0x80;
@@ -221,15 +219,9 @@ void *oam_session_run_lbm(void *args)
         dst_hwaddr[5] = 0x30 + current_session.meg_level;
         current_session.is_multicast = true;
 
-        /* Thresholds and callback are not used during multicast */
+        /* Thresholds are not used during multicast */
         current_params->missed_consecutive_ping_threshold = 0;
         current_params->ping_recovery_threshold = 0;
-        current_params->is_oneshot = false;
-        current_params->callback = NULL; // TODO: we might need a callback here
-
-        /* We should probably ignore VLAN headers too - TODO: check VLAN handling in this scenario */
-        current_params->vlan_id = 0;
-        current_params->pcp = 0;
 
         /* Standard says that interval should be 5s for ETH-LB multicast mode */
         if (current_session.interval_ms < 5000)
@@ -843,7 +835,7 @@ void *oam_session_run_lbr(void *args)
                 /* Is it multicast? */
                 if (eh->ether_dhost[0] == 0x01 && eh->ether_dhost[1] == 0x80 &&
                     eh->ether_dhost[2] == 0xC2 && eh->ether_dhost[3] == 0x00 &&
-                    eh->ether_dhost[4] == 0x00 && eh->ether_dhost[5] == 0x30 + current_session.meg_level) 
+                    eh->ether_dhost[4] == 0x00 && eh->ether_dhost[5] == (0x30 + current_session.meg_level)) 
                     current_session.is_frame_multicast = true;
                 else
                     /* Otherwise drop it */
