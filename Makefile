@@ -62,14 +62,14 @@ uninstall:
 	$(Q)rm -rf $(PREFIX)/include/libnetoam 2> /dev/null ||:
 	$(Q)rm -rf $(PREFIX)/lib/libnetoam.so* 2> /dev/null ||:
 
-test:
+test-build:
 	$(Q)$(MAKE) -s -C $(TESTDIR) bins
 
-test-run: test
+test-run: test-build
 	$(Q)cd $(TESTDIR) ; \
 	./run.sh
 
-test-run-valgrind: test
+test-run-valgrind: test-build
 	$(Q)cd $(TESTDIR) ; \
 	./run_valgrind.sh
 
