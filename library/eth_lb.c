@@ -1055,7 +1055,7 @@ void *oam_session_run_lb_discover(void *args)
     }
 
     /* Build oam common header for LMB frames */
-    oam_build_common_header(current_session.meg_level, 0, OAM_OP_LBM, 0, 4, &lb_frame.oam_header);
+    oam_build_common_header(current_session.meg_level, OAM_HDR_PROT_VERSION, OAM_OP_LBM, OAM_HDR_NO_FLAGS, OAM_HDR_TLV_OFFSET, &lb_frame.oam_header);
 
     /* Check if interface is a VLAN */
     ret = oam_is_eth_vlan(current_params->if_name, &current_session);
@@ -1213,7 +1213,7 @@ void *oam_session_run_lb_discover(void *args)
                 current_session.transaction_id++;
 
                 /* Update frame and send on wire */
-                oam_build_lb_frame(current_session.transaction_id, 0, &lb_frame);
+                oam_build_lb_frame(current_session.transaction_id, OAM_HDR_END_TLV, &lb_frame);
 
                 /* Loop through the list of destination MAC addresses, build and send the frame */
                 for (size_t i = 0; i < current_session.dst_addr_count; i++) {
