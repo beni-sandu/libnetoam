@@ -5,6 +5,7 @@ All relevant changes are documented in this file.
 
 v0.1.2 released TBD
 -------------
+* implement a new LB_DISCOVER session type
 * fix multicast address range
 * remove libnet dependency
 * add an ETH-LB multicast testcase
@@ -15,7 +16,7 @@ v0.1.1 released 22-Jan-2025
 -------------
 * ETH-LB - use monotonic clocks instead of realtime
 * ETH-LB - add a minimum length Sender ID TLV
-* ETH-LB - use BPF filter instead of ETH_P_ALL sockets
+* ETH-LB - use BP filter instead of ETH_P_ALL sockets
 * add an initial testing framework
 * improve error reporting and handling
 * add **`enable_console_logs`** flag to explicitly output log messages to console

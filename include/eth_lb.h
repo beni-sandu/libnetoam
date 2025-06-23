@@ -67,7 +67,6 @@ struct oam_lb_session {
     bool is_frame_multicast;                                    /* Flag for multicast frames */
     uint32_t interval_ms;                                       /* Ping interval in miliseconds */
     bool is_multicast;                                          /* Flag for multicast sessions */
-    bool is_lb_discover;                                        /* Flag for OAM_SESSION_LB_DISCOVER case */
     uint8_t meg_level;                                          /* Maintenance entity group level */
     bool custom_vlan;                                           /* Flag for custom VLAN */
     bool is_if_tagged;                                          /* Flag describing if session is started on a VLAN */
