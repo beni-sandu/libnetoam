@@ -1040,7 +1040,7 @@ void *oam_session_run_lb_discover(void *args)
         current_session.dst_addr_count++;
     }
 
-    oam_pr_debug(current_params, "Loaded %d valid MAC addresses from the provided list.\n", current_session.dst_addr_count);
+    oam_pr_debug(current_params, "Loaded %lu valid MAC addresses from the provided list.\n", current_session.dst_addr_count);
 
     /* Use a minimum of 5 seconds TX interval (similar to multicast mode) */
     if (current_session.interval_ms < 5000)
@@ -1268,6 +1268,20 @@ void *oam_session_run_lb_discover(void *args)
                             continue;
                         }
                     }
+
+                    if (current_session.is_if_tagged == true)
+                        oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
+                            current_session.dst_hwaddr_list[i][0], current_session.dst_hwaddr_list[i][1],
+                            current_session.dst_hwaddr_list[i][2], current_session.dst_hwaddr_list[i][3],
+                            current_session.dst_hwaddr_list[i][4], current_session.dst_hwaddr_list[i][5],
+                            current_session.transaction_id);
+                    else
+                        oam_pr_debug(current_params, "[%s.%d] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
+                            current_params->vlan_id, current_session.dst_hwaddr_list[i][0],
+                            current_session.dst_hwaddr_list[i][1], current_session.dst_hwaddr_list[i][2],
+                            current_session.dst_hwaddr_list[i][3], current_session.dst_hwaddr_list[i][4],
+                            current_session.dst_hwaddr_list[i][5],
+                            current_session.transaction_id);
                 }
 
                 /*
@@ -1282,20 +1296,6 @@ void *oam_session_run_lb_discover(void *args)
                     oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
                     pthread_exit(NULL);
                 }
-
-                if (current_session.is_if_tagged == true)
-                    oam_pr_debug(current_params, "[%s] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
-                        current_session.dst_hwaddr_list[i][0], current_session.dst_hwaddr_list[i][1],
-                        current_session.dst_hwaddr_list[i][2], current_session.dst_hwaddr_list[i][3],
-                        current_session.dst_hwaddr_list[i][4], current_session.dst_hwaddr_list[i][5],
-                        current_session.transaction_id);
-                else
-                    oam_pr_debug(current_params, "[%s.%d] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
-                        current_params->vlan_id, current_session.dst_hwaddr_list[i][0],
-                        current_session.dst_hwaddr_list[i][1], current_session.dst_hwaddr_list[i][2],
-                        current_session.dst_hwaddr_list[i][3], current_session.dst_hwaddr_list[i][4],
-                        current_session.dst_hwaddr_list[i][5],
-                        current_session.transaction_id);
 
                 current_session.send_next_frame = false;
                 frame_sent = true;

@@ -26,7 +26,7 @@ sleep 2
 export LD_LIBRARY_PATH="../build"
 
 # Run all tests from directory
-tests=$(find * -type f -name 'test_*' ! -name 'test_valgrind' ! -name 'test_session_multicast')
+tests=$(find * -type f -name 'test_*' ! -name 'test_valgrind' ! -name 'test_session_multicast' ! -name 'test_session_lb_discovery')
 
 for f in $tests
 do
@@ -86,26 +86,60 @@ if_meg_1=( lbr3-peer )
 # Get MACs
 declare -A macs
 for iface in "${if_meg_0[@]}" "${if_meg_1[@]}"; do
-    macs["$iface"]=$(ip link show "$iface" | awk '/link\/ether/ {print $2}')
+    macs["$iface"]=$(ip -o link show "$iface" | awk '{print $17}')
 done
 
 # Check LBR replies
 log="${test_multicast}.out"
-valid=0
-invalid=0
-
+expected_ok=1
 for iface in "${if_meg_0[@]}"; do
-    grep -qi "Got LBR from: ${macs[$iface]}," "$log" && valid=1
+    mac=${macs[$iface]}
+    if ! grep -qi "Got LBR from: ${mac}," "$log"; then
+        expected_ok=0
+    fi
 done
 
+unexpected_found=0
 for iface in "${if_meg_1[@]}"; do
-    grep -qi "Got LBR from: ${macs[$iface]}," "$log" && invalid=1
+    mac=${macs[$iface]}
+    if grep -qi "Got LBR from: ${mac}," "$log"; then
+        unexpected_found=1
+    fi
 done
 
-if [[ $valid -eq 1 && $invalid -eq 0 ]]; then
+if (( expected_ok && ! unexpected_found )); then
     echo "PASS: ${test_multicast}"
 else
     echo "FAIL: ${test_multicast}"
+fi
+
+# Test case for LB_DISCOVER session type
+if_meg_0=( lbr1-peer lbr2-peer lbr3-peer )
+declare -A macs
+for iface in "${if_meg_0[@]}"; do
+    macs["$iface"]=$(ip -o link show "$iface" | awk '{print $17}')
+done
+
+test_lb_discover=test_session_lb_discovery
+
+./"$test_lb_discover" "${macs[@]}" \
+    > "${test_lb_discover}.out" \
+    2> "${test_lb_discover}.err"
+
+log="${test_lb_discover}.out"
+all_ok=1
+
+for iface in "${if_meg_0[@]}"; do
+    mac="${macs[$iface]}"
+    if ! grep -qi "Got LBR from: ${mac}," "$log"; then
+        all_ok=0
+    fi
+done
+
+if (( all_ok )); then
+    echo "PASS: ${test_lb_discover}"
+else
+    echo "FAIL: ${test_lb_discover}"
 fi
 
 # When done, clean everything up
