@@ -26,7 +26,7 @@ sleep 2
 export LD_LIBRARY_PATH="../build"
 
 # Run all tests from directory
-tests=$(find * -type f -name 'test_*' ! -name 'test_valgrind' ! -name 'test_session_multicast' ! -name 'test_session_lb_discovery')
+tests=$(find * -type f -name 'test_*' ! -name 'test_session_run' ! -name 'test_session_multicast' ! -name 'test_session_lb_discovery')
 
 for f in $tests
 do
