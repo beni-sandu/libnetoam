@@ -115,6 +115,7 @@ fi
 
 # Test case for LB_DISCOVER session type
 if_meg_0=( lbr1-peer lbr2-peer lbr3-peer )
+unset macs
 declare -A macs
 for iface in "${if_meg_0[@]}"; do
     macs["$iface"]=$(ip -o link show "$iface" | awk '{print $17}')
@@ -140,6 +141,36 @@ if (( all_ok )); then
     echo "PASS: ${test_lb_discover}"
 else
     echo "FAIL: ${test_lb_discover}"
+fi
+
+# Test case for LB_DISCOVER with single peer
+if_meg_0=( lbr1-peer )
+unset macs
+declare -A macs
+for iface in "${if_meg_0[@]}"; do
+    macs["$iface"]=$(ip -o link show "$iface" | awk '{print $17}')
+done
+
+test_lb_discover=test_session_lb_discovery
+
+./"$test_lb_discover" "${macs[@]}" \
+    > "${test_lb_discover}_single_peer.out" \
+    2> "${test_lb_discover}_single_peer.err"
+
+log="${test_lb_discover}_single_peer.out"
+all_ok=1
+
+for iface in "${if_meg_0[@]}"; do
+    mac="${macs[$iface]}"
+    if ! grep -qi "Got LBR from: ${mac}," "$log"; then
+        all_ok=0
+    fi
+done
+
+if (( all_ok )); then
+    echo "PASS: ${test_lb_discover}_single_peer"
+else
+    echo "FAIL: ${test_lb_discover}_single_peer"
 fi
 
 # When done, clean everything up
