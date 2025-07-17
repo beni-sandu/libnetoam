@@ -1059,9 +1059,9 @@ void *oam_session_run_lb_discover(void *args)
      */
     if (oam_load_mac_list(current_params->dst_mac_list, &current_session.dst_hwaddr_list, &current_session.dst_addr_count) == -1) {
         oam_pr_error(current_params, "[%s:%d]: Failed to parse provided MAC list.\n", __FILE__, __LINE__);
-            current_thread->ret = -1;
-            sem_post(&current_thread->sem);
-            pthread_exit(NULL);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
     }
     oam_pr_debug(current_params, "Loaded %lu valid MAC addresses from the provided list.\n", current_session.dst_addr_count);
 
@@ -1234,6 +1234,23 @@ void *oam_session_run_lb_discover(void *args)
 
                 /* Bump transaction id */
                 current_session.transaction_id++;
+
+                /* Check for request to update the MAC list */
+                if (current_params->update_mac_list == true) {
+                    oam_pr_debug(current_params, "[%s:%d]: Got request for MAC list update.\n", __FILE__, __LINE__);
+                    /* Clean up current internal list */
+                    oam_clean_mac_list(&current_session.dst_hwaddr_list, &current_session.dst_addr_count);
+
+                    /* Validate the new list */
+                    if (oam_load_mac_list(current_params->dst_mac_list, &current_session.dst_hwaddr_list, &current_session.dst_addr_count) == -1) {
+                        oam_pr_error(current_params, "[%s:%d]: Failed to parse provided MAC list.\n", __FILE__, __LINE__);
+                        pthread_exit(NULL);
+                    }
+                    oam_pr_debug(current_params, "Loaded %lu valid MAC addresses from the new list.\n", current_session.dst_addr_count);
+
+                    /* Reset the update flag */
+                    current_params->update_mac_list = false;
+                }
 
                 /* Update frame and send on wire */
                 oam_build_lb_frame(current_session.transaction_id, OAM_HDR_END_TLV, &lb_frame);

@@ -34,7 +34,8 @@ struct oam_lb_pdu {
 struct oam_lb_session_params {
     char if_name[IFNAMSIZ];                                     /* Network interface name */
     char dst_mac[ETH_STR_LEN];                                  /* Destination MAC address in string format */
-    const char * const *dst_mac_list;                           /* NULL terminated list of destination MAC addresses in string format (OAM_SESSION_LB_DISCOVER) */
+    const char * const *dst_mac_list;                           /* (LB_DISCOVER) NULL terminated list of destination MAC addresses in string format */
+    bool update_mac_list;                                       /* (LB_DISCOVER) flag to request MAC list update */
     uint32_t interval_ms;                                       /* Ping interval in miliseconds */
     uint32_t missed_consecutive_ping_threshold;                 /* Counter for consecutive missed pings */
     uint32_t ping_recovery_threshold;                           /* Recovery threshold counter */
