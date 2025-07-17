@@ -45,7 +45,7 @@ static __thread int ns_fd;
 static __thread char ns_buf[PATH_MAX] = "/run/netns/";
 static __thread struct tpacket_auxdata recv_auxdata;
 
-static int oam_load_mac_list(char **dst_mac_list, uint8_t ***dst_hwaddr_list, size_t *dst_addr_count)
+static int oam_load_mac_list(const char * const *dst_mac_list, uint8_t ***dst_hwaddr_list, size_t *dst_addr_count)
 {
     while (dst_mac_list[*dst_addr_count] != NULL) {
         uint8_t **tmp = realloc(*dst_hwaddr_list,

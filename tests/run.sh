@@ -26,7 +26,7 @@ sleep 2
 export LD_LIBRARY_PATH="../build"
 
 # Run all tests from directory
-tests=$(find * -type f -name 'test_*' ! -name 'test_session_run' ! -name 'test_session_multicast' ! -name 'test_session_lb_discovery')
+tests=$(find * -type f -name 'test_*' ! -name 'test_session_run' ! -name 'test_session_multicast' ! -name 'test_session_lb_discover')
 
 for f in $tests
 do
@@ -121,7 +121,7 @@ for iface in "${if_meg_0[@]}"; do
     macs["$iface"]=$(ip -o link show "$iface" | awk '{print $17}')
 done
 
-test_lb_discover=test_session_lb_discovery
+test_lb_discover=test_session_lb_discover
 
 ./"$test_lb_discover" "${macs[@]}" \
     > "${test_lb_discover}.out" \
@@ -151,7 +151,7 @@ for iface in "${if_meg_0[@]}"; do
     macs["$iface"]=$(ip -o link show "$iface" | awk '{print $17}')
 done
 
-test_lb_discover=test_session_lb_discovery
+test_lb_discover=test_session_lb_discover
 
 ./"$test_lb_discover" "${macs[@]}" \
     > "${test_lb_discover}_single_peer.out" \

@@ -34,7 +34,7 @@ sleep 2
 export LD_LIBRARY_PATH="../build"
 
 # Run all tests from directory
-tests=$(find * -type f -name 'test_*' ! -name 'test_session_multicast' ! -name 'test_session_lb_discovery')
+tests=$(find * -type f -name 'test_*' ! -name 'test_session_multicast' ! -name 'test_session_lb_discover')
 
 for f in $tests
 do
@@ -100,7 +100,7 @@ for iface in "${if_meg_0[@]}"; do
     macs["$iface"]=$(ip -o link show "$iface" | awk '{print $17}')
 done
 
-test_lb_discover=test_session_lb_discovery
+test_lb_discover=test_session_lb_discover
 valgrind --suppressions=${SCRIPT_PATH}/glibc.supp --show-error-list=yes --leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1 \
     ./${test_lb_discover} "${macs[@]}" > ./${test_lb_discover}.out 2> ./${test_lb_discover}.err
 if [ $? -eq 0 ]; then

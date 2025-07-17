@@ -4,13 +4,14 @@ int main(int argc, char **argv)
 {
     oam_session_id s1_lb_d = 0, s1_lbr = 0, s2_lbr = 0, s3_lbr = 0;
     int test_status = 0;
+    const char * const *mac_list = (const char * const *)(argv + 1);
 
     struct oam_lb_session_params s1_lb_d_params = {
         .if_name = "lbm-peer",
         .interval_ms = 5000,
         .meg_level = 0,
         .enable_console_logs = true,
-        .dst_mac_list = &argv[1],
+        .dst_mac_list = mac_list,
     };
 
     struct oam_lb_session_params s1_lbr_params = {
