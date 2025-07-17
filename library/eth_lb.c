@@ -45,6 +45,53 @@ static __thread int ns_fd;
 static __thread char ns_buf[PATH_MAX] = "/run/netns/";
 static __thread struct tpacket_auxdata recv_auxdata;
 
+static int oam_load_mac_list(char **dst_mac_list, uint8_t ***dst_hwaddr_list, size_t *dst_addr_count)
+{
+    while (dst_mac_list[*dst_addr_count] != NULL) {
+        uint8_t **tmp = realloc(*dst_hwaddr_list,
+                        (*dst_addr_count + 1) * sizeof(uint8_t *));
+        if (!tmp) {
+            oam_pr_error(NULL, "[%s:%d]: realloc failed.\n", __FILE__, __LINE__);
+            return -1;
+        }
+
+        *dst_hwaddr_list = tmp;
+
+        (*dst_hwaddr_list)[*dst_addr_count] = malloc(ETH_ALEN * sizeof(uint8_t));
+        if ((*dst_hwaddr_list)[*dst_addr_count] == NULL) {
+            oam_pr_error(NULL, "[%s:%d]: malloc for MAC failed.\n", __FILE__, __LINE__);
+            return -1;
+        }
+
+        if (oam_hwaddr_str2bin(dst_mac_list[*dst_addr_count],
+                                (*dst_hwaddr_list)[*dst_addr_count]) == -1) {
+            oam_pr_error(NULL, "[%s:%d]: Invalid MAC address: %s\n",
+                        __FILE__, __LINE__, dst_mac_list[*dst_addr_count]);
+            return -1;
+        }
+
+        oam_pr_debug(NULL, "Loaded valid MAC address from the list: %02X:%02X:%02X:%02X:%02X:%02X.\n",
+            (*dst_hwaddr_list)[*dst_addr_count][0], (*dst_hwaddr_list)[*dst_addr_count][1],
+            (*dst_hwaddr_list)[*dst_addr_count][2], (*dst_hwaddr_list)[*dst_addr_count][3],
+            (*dst_hwaddr_list)[*dst_addr_count][4], (*dst_hwaddr_list)[*dst_addr_count][5]);
+        (*dst_addr_count)++;
+    }
+    return 0;
+}
+
+static void oam_clean_mac_list(uint8_t ***dst_hwaddr_list, size_t *dst_addr_count)
+{
+     if (!dst_hwaddr_list || !*dst_hwaddr_list)
+        return;
+
+    for (size_t i = 0; i < *dst_addr_count; i++)
+        free((*dst_hwaddr_list)[i]);
+
+    free(*dst_hwaddr_list);
+    *dst_hwaddr_list = NULL;
+    *dst_addr_count = 0;
+}
+
 static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms, struct oam_lb_session *oam_session)
 {
     struct pollfd fds[1];
@@ -1004,42 +1051,12 @@ void *oam_session_run_lb_discover(void *args)
      * Validate all the MAC addresses in the provided list.
      * If an invalid MAC address is found, session is terminated with an error message.
      */
-    while (current_params->dst_mac_list[current_session.dst_addr_count] != NULL) {
-        uint8_t **tmp = realloc(current_session.dst_hwaddr_list,
-                        (current_session.dst_addr_count + 1) * sizeof(uint8_t *));
-        if (!tmp) {
-            oam_pr_error(current_params, "[%s:%d]: realloc failed.\n", __FILE__, __LINE__);
+    if (oam_load_mac_list(current_params->dst_mac_list, &current_session.dst_hwaddr_list, &current_session.dst_addr_count) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: Failed to parse provided MAC list.\n", __FILE__, __LINE__);
             current_thread->ret = -1;
             sem_post(&current_thread->sem);
             pthread_exit(NULL);
-        }
-
-        current_session.dst_hwaddr_list = tmp;
-
-        current_session.dst_hwaddr_list[current_session.dst_addr_count] = malloc(ETH_ALEN * sizeof(uint8_t));
-        if (!current_session.dst_hwaddr_list[current_session.dst_addr_count]) {
-            oam_pr_error(current_params, "[%s:%d]: malloc for MAC failed.\n", __FILE__, __LINE__);
-            current_thread->ret = -1;
-            sem_post(&current_thread->sem);
-            pthread_exit(NULL);
-        }
-
-        if (oam_hwaddr_str2bin(current_params->dst_mac_list[current_session.dst_addr_count],
-                                current_session.dst_hwaddr_list[current_session.dst_addr_count]) == -1) {
-            oam_pr_error(current_params, "[%s:%d]: Invalid MAC address: %s\n",
-                        __FILE__, __LINE__, current_params->dst_mac_list[current_session.dst_addr_count]);
-            current_thread->ret = -1;
-            sem_post(&current_thread->sem);
-            pthread_exit(NULL);
-        }
-
-        oam_pr_debug(current_params, "Loaded valid MAC address from the list: %02X:%02X:%02X:%02X:%02X:%02X.\n",
-            current_session.dst_hwaddr_list[current_session.dst_addr_count][0], current_session.dst_hwaddr_list[current_session.dst_addr_count][1],
-            current_session.dst_hwaddr_list[current_session.dst_addr_count][2], current_session.dst_hwaddr_list[current_session.dst_addr_count][3],
-            current_session.dst_hwaddr_list[current_session.dst_addr_count][4], current_session.dst_hwaddr_list[current_session.dst_addr_count][5]);
-        current_session.dst_addr_count++;
     }
-
     oam_pr_debug(current_params, "Loaded %lu valid MAC addresses from the provided list.\n", current_session.dst_addr_count);
 
     /* Use a minimum of 5 seconds TX interval (similar to multicast mode) */
@@ -1414,16 +1431,8 @@ static void lb_session_cleanup(void *args)
     if (current_session->tx_sockfd > 0)
         close(current_session->tx_sockfd);
 
-    /* Free memory for destination hwaddr list */
-    if (current_session->dst_hwaddr_list) {
-        for (size_t i = 0; i < current_session->dst_addr_count; i++) {
-            free(current_session->dst_hwaddr_list[i]);
-            current_session->dst_hwaddr_list[i] = NULL;
-        }
-        free(current_session->dst_hwaddr_list);
-        current_session->dst_hwaddr_list = NULL;
-        current_session->dst_addr_count = 0;
-    }
+    /* Clean destination hwaddr list */
+    oam_clean_mac_list(&current_session->dst_hwaddr_list, &current_session->dst_addr_count);
 
     /* 
      * If a session is not successfully configured, we don't call pthread_join on it,
