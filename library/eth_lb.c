@@ -950,7 +950,6 @@ void *oam_session_run_lb_discover(void *args)
     size_t tx_eth_frame_s = sizeof(struct ether_header) + sizeof(struct oam_lb_pdu);
     ssize_t sent_bytes = 0;
     uint8_t src_hwaddr[ETH_ALEN];
-    uint64_t lb_discovery_replies = 0;
 
     /* Setup buffer and header structs for received packets */
     uint8_t recv_buf[8192];
@@ -992,6 +991,8 @@ void *oam_session_run_lb_discover(void *args)
 
     /* Install session cleanup handler */
     pthread_cleanup_push(lb_session_cleanup, (void *)&current_session);
+
+    uint64_t lb_discovery_replies = 0;
 
     /* Check for CAP_NET_RAW capability */
     caps = cap_get_proc();
@@ -1220,12 +1221,12 @@ void *oam_session_run_lb_discover(void *args)
     while (true) {
 
         if (current_session.send_next_frame == true) {
-
             /* We did not get any replies */
             if (got_reply == false) {
                     oam_pr_info(current_params, "[%s] No replies to LB DISCOVERY message, trans_id: %u\n",
                             current_params->if_name, current_session.transaction_id);
                     lb_discovery_replies = 0;
+                    callback_status.cb_ret = OAM_LB_CB_DEFAULT;
             }
             frame_sent = false;
             got_reply = false;
@@ -1393,7 +1394,10 @@ void *oam_session_run_lb_discover(void *args)
                     continue;
                 }
 
+                /* Save live peer MAC to upper layer list */
+                memcpy(((uint8_t (*)[ETH_ALEN])callback_status.session_params->client_data)[lb_discovery_replies], eh->ether_shost, ETH_ALEN);
                 lb_discovery_replies++;
+                callback_status.cb_ret = OAM_LB_CB_DISCOVER_LIST_MACS;
 
                 /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
                 if (current_session.is_if_tagged == true)
@@ -1413,6 +1417,11 @@ void *oam_session_run_lb_discover(void *args)
                 frame_sent = 0;
 
             } // if (recvmsg_ppoll > 0)
+        }
+        /* If we have replies, use callback */
+        if ((callback_status.cb_ret == OAM_LB_CB_DISCOVER_LIST_MACS) && current_params->callback) {
+            current_params->callback(&callback_status);
+            lb_discovery_replies = 0;
         }
     } // while (true)
 

@@ -50,6 +50,7 @@ struct oam_lb_session_params {
     bool is_multicast;                                          /* Flag for multicast sessions */
     bool enable_console_logs;                                   /* Output log messages to console too */
     bool log_utc;                                               /* Output log messages in UTC timezone */
+    void *client_data;                                          /* Pointer to be used by upper layers */
 };
 
 /* ETH-LB session data */
