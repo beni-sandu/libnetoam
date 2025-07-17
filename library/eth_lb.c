@@ -47,36 +47,42 @@ static __thread struct tpacket_auxdata recv_auxdata;
 
 static int oam_load_mac_list(const char * const *dst_mac_list, uint8_t ***dst_hwaddr_list, size_t *dst_addr_count)
 {
-    while (dst_mac_list[*dst_addr_count] != NULL) {
-        uint8_t **tmp = realloc(*dst_hwaddr_list,
-                        (*dst_addr_count + 1) * sizeof(uint8_t *));
+    while (*dst_mac_list) {
+        uint8_t *mac = malloc(ETH_ALEN);
+        if (!mac) {
+            oam_pr_error(NULL, "[%s:%d]: malloc failed.\n", __FILE__, __LINE__);
+            goto fail;
+        }
+
+        if (oam_hwaddr_str2bin(*dst_mac_list, mac) == -1) {
+            oam_pr_error(NULL, "[%s:%d] Invalid MAC: %s\n", __FILE__, __LINE__, *dst_mac_list);
+            free(mac);
+            goto fail;
+        }
+
+        uint8_t **tmp = realloc(*dst_hwaddr_list, (*dst_addr_count + 1) * sizeof(*tmp));
         if (!tmp) {
-            oam_pr_error(NULL, "[%s:%d]: realloc failed.\n", __FILE__, __LINE__);
-            return -1;
+            oam_pr_error(NULL, "[%s:%d] realloc failed\n", __FILE__, __LINE__);
+            free(mac);
+            goto fail;
         }
-
+        tmp[*dst_addr_count] = mac;
         *dst_hwaddr_list = tmp;
-
-        (*dst_hwaddr_list)[*dst_addr_count] = malloc(ETH_ALEN * sizeof(uint8_t));
-        if ((*dst_hwaddr_list)[*dst_addr_count] == NULL) {
-            oam_pr_error(NULL, "[%s:%d]: malloc for MAC failed.\n", __FILE__, __LINE__);
-            return -1;
-        }
-
-        if (oam_hwaddr_str2bin(dst_mac_list[*dst_addr_count],
-                                (*dst_hwaddr_list)[*dst_addr_count]) == -1) {
-            oam_pr_error(NULL, "[%s:%d]: Invalid MAC address: %s\n",
-                        __FILE__, __LINE__, dst_mac_list[*dst_addr_count]);
-            return -1;
-        }
-
-        oam_pr_debug(NULL, "Loaded valid MAC address from the list: %02X:%02X:%02X:%02X:%02X:%02X.\n",
-            (*dst_hwaddr_list)[*dst_addr_count][0], (*dst_hwaddr_list)[*dst_addr_count][1],
-            (*dst_hwaddr_list)[*dst_addr_count][2], (*dst_hwaddr_list)[*dst_addr_count][3],
-            (*dst_hwaddr_list)[*dst_addr_count][4], (*dst_hwaddr_list)[*dst_addr_count][5]);
         (*dst_addr_count)++;
+
+        oam_pr_debug(NULL, "Loaded MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
+                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        dst_mac_list++;
     }
     return 0;
+
+fail:
+    for (size_t i = 0; i < *dst_addr_count; ++i)
+        free((*dst_hwaddr_list)[i]);
+    free(*dst_hwaddr_list);
+    *dst_hwaddr_list  = NULL;
+    *dst_addr_count = 0;
+    return -1;
 }
 
 static void oam_clean_mac_list(uint8_t ***dst_hwaddr_list, size_t *dst_addr_count)
