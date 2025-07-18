@@ -1064,6 +1064,13 @@ void *oam_session_run_lb_discover(void *args)
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
+
+    if (current_session.dst_addr_count == 0) {
+        oam_pr_error(current_params, "[%s:%d]: Could not find any MACs in the provided list.\n", __FILE__, __LINE__);
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
     oam_pr_debug(current_params, "Loaded %lu valid MAC addresses from the provided list.\n", current_session.dst_addr_count);
 
     /* Use a minimum of 5 seconds TX interval (similar to multicast mode) */
@@ -1239,6 +1246,7 @@ void *oam_session_run_lb_discover(void *args)
                 /* Check for request to update the MAC list */
                 if (current_params->update_mac_list == true) {
                     oam_pr_debug(current_params, "[%s:%d]: Got request for MAC list update.\n", __FILE__, __LINE__);
+
                     /* Clean up current internal list */
                     oam_clean_mac_list(&current_session.dst_hwaddr_list, &current_session.dst_addr_count);
 
