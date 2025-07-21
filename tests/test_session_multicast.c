@@ -1,5 +1,30 @@
 #include "oam_test.h"
 
+#define LIVE_PEER_LIST (12)
+static uint8_t live_peers[LIVE_PEER_LIST][ETH_ALEN] = { {0} };
+
+/* Prototypes */
+void oam_callback(struct cb_status *status);
+
+void oam_callback(struct cb_status *status)
+{
+    switch (status->cb_ret) {
+        case OAM_LB_CB_LIST_LIVE_MACS: {
+
+            /* Print list of current live peers */
+            printf("List of live peers:\n");
+            for (size_t i = 0; i < LIVE_PEER_LIST && live_peers[i][0]; ++i)
+                printf("%02X:%02X:%02X:%02X:%02X:%02X\n",
+                        live_peers[i][0], live_peers[i][1], live_peers[i][2],
+                        live_peers[i][3], live_peers[i][4], live_peers[i][5]);
+
+            /* Clear list for next update */
+            memset(live_peers, 0, sizeof(live_peers));
+            break;
+        }
+    }
+}
+
 int main(void)
 {
     oam_session_id s1_lbm = 0, s1_lbr = 0, s2_lbr = 0, s3_lbr = 0;
@@ -11,6 +36,8 @@ int main(void)
         .meg_level = 0,
         .is_multicast = true,
         .enable_console_logs = true,
+        .callback = &oam_callback,
+        .client_data = live_peers,
     };
 
     struct oam_lb_session_params s1_lbr_params = {

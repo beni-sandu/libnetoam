@@ -9,7 +9,7 @@ void oam_callback(struct cb_status *status);
 void oam_callback(struct cb_status *status)
 {
     switch (status->cb_ret) {
-        case OAM_LB_CB_DISCOVER_LIST_MACS: {
+        case OAM_LB_CB_LIST_LIVE_MACS: {
 
             /* Print list of current live peers */
             printf("List of live peers:\n");

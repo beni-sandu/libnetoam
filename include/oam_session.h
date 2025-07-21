@@ -34,7 +34,7 @@ enum oam_cb_ret {
     OAM_LB_CB_DEFAULT                  = 0,
     OAM_LB_CB_MISSED_PING_THRESH       = 1,
     OAM_LB_CB_RECOVER_PING_THRESH      = 2,
-    OAM_LB_CB_DISCOVER_LIST_MACS       = 3,
+    OAM_LB_CB_LIST_LIVE_MACS           = 3,
 };
 
 #endif //_OAM_SESSION_H

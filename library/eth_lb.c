@@ -435,6 +435,7 @@ void *oam_session_run_lbm(void *args)
                             current_params->if_name, current_session.transaction_id);
 
                     lbm_multicast_replies = 0;
+                    callback_status.cb_ret = OAM_LB_CB_DEFAULT;
                 } else {
 
                     if (current_session.is_if_tagged == true)
@@ -607,8 +608,15 @@ void *oam_session_run_lbm(void *args)
                 lbm_missed_pings = 0;
                 lbm_replied_pings++;
 
-                if (current_session.is_multicast == true)
+                if (current_session.is_multicast == true) {
+
+                    /* Save live peer MAC to upper layer list */
+                    if (callback_status.session_params->client_data != NULL) {
+                        memcpy(((uint8_t (*)[ETH_ALEN])callback_status.session_params->client_data)[lbm_multicast_replies], eh->ether_shost, ETH_ALEN);
+                        callback_status.cb_ret = OAM_LB_CB_LIST_LIVE_MACS;
+                    }
                     lbm_multicast_replies++;
+                }
 
                 /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
                 if (current_session.is_if_tagged == true)
@@ -648,6 +656,13 @@ void *oam_session_run_lbm(void *args)
 
             } // if (recvmsg_ppoll > 0)
         } // multicast loop
+        if (current_session.is_multicast == true) {
+            /* If we have replies, use callback */
+            if ((callback_status.cb_ret == OAM_LB_CB_LIST_LIVE_MACS) && current_params->callback) {
+                current_params->callback(&callback_status);
+                lbm_multicast_replies = 0;
+            }
+        }
     } // while (true)
 
     pthread_cleanup_pop(0);
@@ -1405,7 +1420,7 @@ void *oam_session_run_lb_discover(void *args)
                 /* Save live peer MAC to upper layer list */
                 if (callback_status.session_params->client_data != NULL) {
                     memcpy(((uint8_t (*)[ETH_ALEN])callback_status.session_params->client_data)[lb_discovery_replies], eh->ether_shost, ETH_ALEN);
-                    callback_status.cb_ret = OAM_LB_CB_DISCOVER_LIST_MACS;
+                    callback_status.cb_ret = OAM_LB_CB_LIST_LIVE_MACS;
                 }
                 lb_discovery_replies++;
 
@@ -1429,7 +1444,7 @@ void *oam_session_run_lb_discover(void *args)
             } // if (recvmsg_ppoll > 0)
         }
         /* If we have replies, use callback */
-        if ((callback_status.cb_ret == OAM_LB_CB_DISCOVER_LIST_MACS) && current_params->callback) {
+        if ((callback_status.cb_ret == OAM_LB_CB_LIST_LIVE_MACS) && current_params->callback) {
             current_params->callback(&callback_status);
             lb_discovery_replies = 0;
         }
