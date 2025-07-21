@@ -1403,9 +1403,11 @@ void *oam_session_run_lb_discover(void *args)
                 }
 
                 /* Save live peer MAC to upper layer list */
-                memcpy(((uint8_t (*)[ETH_ALEN])callback_status.session_params->client_data)[lb_discovery_replies], eh->ether_shost, ETH_ALEN);
+                if (callback_status.session_params->client_data != NULL) {
+                    memcpy(((uint8_t (*)[ETH_ALEN])callback_status.session_params->client_data)[lb_discovery_replies], eh->ether_shost, ETH_ALEN);
+                    callback_status.cb_ret = OAM_LB_CB_DISCOVER_LIST_MACS;
+                }
                 lb_discovery_replies++;
-                callback_status.cb_ret = OAM_LB_CB_DISCOVER_LIST_MACS;
 
                 /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
                 if (current_session.is_if_tagged == true)
