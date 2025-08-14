@@ -1,3 +1,8 @@
+<a href="https://scan.coverity.com/projects/beni-sandu-libnetoam">
+  <img alt="Coverity Scan Build Status"
+       src="https://img.shields.io/coverity/scan/31409.svg"/>
+</a>
+
 Operation, administration and maintenance (OAM) networking protocols
 ====================================================================
 
