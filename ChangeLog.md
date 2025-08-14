@@ -5,6 +5,7 @@ All relevant changes are documented in this file.
 
 v0.1.2 released TBD
 -------------
+* implement a way to retrieve list of live peers for multicast and LB_DISCOVER
 * implement a new LB_DISCOVER session type
 * fix multicast address range
 * remove libnet dependency
