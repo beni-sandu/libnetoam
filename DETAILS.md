@@ -35,12 +35,17 @@ Supported parameters for a LBR session (OAM_SESSION_LBR)
 Supported parameters for a LB discovery session (OAM_SESSION_LB_DISCOVER)
 --------------------------------------
 - if_name - Name of interface to use for the session
+- dst_mac_list - List of MAC addresses in string format used to send LBM pings to (**NEEDS TO BE NULL TERMINATED**)
 - meg_level - Maintenance entity group level
+- interval_ms - Timeout interval in miliseconds between pings (5000ms min)
+- callback - Callback function that can be used to retrieve list of live peers
+- vlan_id - Virtual LAN identifier
+- pcp - Priority code point (from 802.1q header)
+- dei - Drop eligible indicator (from 802.1q header)
 - log_file - Path to log file used to store log/error info
 - net_ns - Network namespace
 - enable_console_logs - If enabled, print messages to console too
 - log_utc - If enabled, print log messages in UTC timezone
-- dst_mac_list - List of MAC addresses in string format used to send LBM pings to (**NEEDS TO BE NULL TERMINATED**)
 
 Example of a parameter structure for a LBM session:
 
