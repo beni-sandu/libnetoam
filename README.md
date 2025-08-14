@@ -108,5 +108,18 @@ oam_session_stop(s1_lbm);
 oam_session_stop(s1_lbr);
 ```
 
+Testing
+-------
+The library has a set of automated tests for basic functionality and memory leaks. The memory leak tests require
+valgrind to be installed on the host.
+
+The tests can be run after building, e.g.:
+
+```sh
+$ make libs && make test-build
+$ sudo make test-run
+$ sudo make test-run-valgrind
+```
+
 More details about the available interfaces and parameters can be found here:
 - [DETAILS.md](DETAILS.md)
