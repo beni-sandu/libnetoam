@@ -1,13 +1,60 @@
 {
-   glibc-timer-helper-tls
+   glibc-posix-timer-tls-1
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   ...
+   fun:allocate_dtv
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create*
+   ...
+   fun:__timer_start_helper_thread
+   fun:__pthread_once_slow*
+   fun:pthread_once*
+   fun:timer_create*
+}
+
+{
+   glibc-posix-timer-tls-2   # shorter variant; some builds omit allocate_dtv in the bt
    Memcheck:Leak
    match-leak-kinds: possible
    fun:calloc
    ...
    fun:_dl_allocate_tls
    fun:allocate_stack
-   fun:pthread_create@@GLIBC_*
+   fun:pthread_create*
+   ...
    fun:__timer_start_helper_thread
-   fun:__pthread_once_slow
-   fun:timer_create@@GLIBC_*
+   fun:pthread_once*
+   fun:timer_create*
+}
+
+{
+   glibc-posix-timer-tls-3   # start at _dl_allocate_tls (occasionally top frame isn’t calloc)
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create*
+   ...
+   fun:__timer_start_helper_thread
+   fun:pthread_once*
+   fun:timer_create*
+}
+
+{
+   glibc-posix-timer-tls-4   # obj-qualified; helps across distros/toolchains
+   Memcheck:Leak
+   match-leak-kinds: possible
+   obj:*/ld-*.so*
+   fun:calloc
+   ...
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create*
+   ...
+   fun:__timer_start_helper_thread
+   fun:pthread_once*
+   fun:timer_create*
 }
