@@ -61,7 +61,7 @@ struct oam_lb_session {
     struct timespec time_sent;                                  /* Time when the frame was sent */
     struct timespec time_received;                              /* Time when the frame was received */
     bool is_session_configured;                                 /* Flag for session configuration */
-    struct oam_lbm_timer *lbm_tx_timer;                         /* Pointer to LBM tx timer */
+    int tx_tfd;                                                 /* TX timer fd */
     uint16_t vlan_id;                                           /* VLAN identifier */
     uint8_t pcp;                                                /* Frame priority level */
     volatile bool send_next_frame;                              /* Flag for sending next frame */
@@ -75,13 +75,6 @@ struct oam_lb_session {
     struct oam_lb_session_params *current_params;               /* Pointer to session parameters */
     uint8_t **dst_hwaddr_list;                                  /* List of destination MAC addresses in binary form */
     size_t dst_addr_count;                                      /* Number of destination MAC addresses from list */
-};
-
-/* LBM session timer */
-struct oam_lbm_timer {
-    bool is_timer_created;                                      /* Flag for timer creation */
-    timer_t timer_id;                                           /* POSIX interval timer id */
-    struct itimerspec *ts;                                      /* Interval timer specification */
 };
 
 /* ETH-LB prototypes */

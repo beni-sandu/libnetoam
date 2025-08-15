@@ -10,9 +10,9 @@
 #include <linux/filter.h>
 #include <poll.h>
 #include <pthread.h>
-#include <signal.h>
 #include <sys/capability.h>
 #include <sys/random.h>
+#include <sys/timerfd.h>
 #include <time.h>
 
 #include "../include/libnetoam.h"
@@ -20,16 +20,13 @@
 #include "../include/oam_session.h"
 
 /* Forward declarations */
-static void lbm_timeout_handler(union sigval sv);
 static void lb_session_cleanup(void *args);
-static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms, struct oam_lb_session *oam_session);
 void *oam_session_run_lbr(void *args);
 void *oam_session_run_lbm(void *args);
 
 extern struct sock_fprog bpf_program;
 
 /* Per thread variables */
-static __thread struct oam_lbm_timer tx_timer;                     /* TX timer */
 static __thread struct oam_lb_pdu lb_frame;
 static __thread struct sockaddr_ll rx_sll;                         /* RX socket address */
 static __thread struct sockaddr_ll tx_sll;                         /* TX socket address */
@@ -98,32 +95,6 @@ static void oam_clean_mac_list(uint8_t ***dst_hwaddr_list, size_t *dst_addr_coun
     *dst_addr_count = 0;
 }
 
-static ssize_t recvmsg_ppoll(int sockfd, struct msghdr *recv_hdr, uint32_t timeout_ms, struct oam_lb_session *oam_session)
-{
-    struct pollfd fds[1];
-    struct timespec ts;
-    int ret;
-
-    fds[0].fd = sockfd;
-    fds[0].events = POLLIN;
-
-    ts.tv_sec = timeout_ms / 1000;
-    ts.tv_nsec = timeout_ms % 1000 * 1000000;
-
-    ret = ppoll(fds, 1, &ts, NULL);
-
-    if (ret == -1) {
-        oam_pr_error(oam_session->current_params,"[%s:%d]: ppoll: %s.\n", __FILE__, __LINE__, oam_perror(errno));
-        return -1;
-    } else if (ret == 0) {
-        return -2; //timeout expired
-    } else
-        if (fds[0].revents & POLLIN)
-            return recvmsg(sockfd, recv_hdr, 0);
-
-    return -1;
-}
-
 /* Entry point of a new OAM LBM session */
 void *oam_session_run_lbm(void *args)
 {
@@ -132,7 +103,6 @@ void *oam_session_run_lbm(void *args)
     uint8_t src_hwaddr[ETH_ALEN];
     uint8_t dst_hwaddr[ETH_ALEN];
     struct itimerspec tx_ts;
-    struct sigevent tx_sev = {0};
     struct oam_lb_session current_session;
     int if_index = 0;
     struct ether_header *eh;
@@ -162,7 +132,7 @@ void *oam_session_run_lbm(void *args)
 
     /* Initialize some session and timer data */
     memset(&current_session, 0, sizeof(current_session));
-    current_session.lbm_tx_timer = &tx_timer;
+    current_session.tx_tfd = -1;
     current_session.is_session_configured = false;
     current_session.send_next_frame = true;
     current_session.interval_ms = current_params->interval_ms;
@@ -174,9 +144,6 @@ void *oam_session_run_lbm(void *args)
     current_session.is_if_tagged = false;
     current_session.current_params = current_params;
 
-    tx_timer.ts = &tx_ts;
-    tx_timer.timer_id = NULL;
-    tx_timer.is_timer_created = false;
     lbm_missed_pings = 0;
     lbm_replied_pings = 0;
     lbm_multicast_replies = 0;
@@ -312,12 +279,6 @@ void *oam_session_run_lbm(void *args)
     } else
         current_session.is_if_tagged = true;
 
-    /* Initial TX timer configuration */
-    tx_sev.sigev_notify = SIGEV_THREAD;                         /* Notify via thread */
-    tx_sev.sigev_notify_function = &lbm_timeout_handler;        /* Handler function */
-    tx_sev.sigev_notify_attributes = NULL;                      /* Could be pointer to pthread_attr_t structure */
-    tx_sev.sigev_value.sival_ptr = &current_session;            /* Pointer passed to handler */
-
     /* Configure TX interval */
     tx_ts.it_interval.tv_sec = current_session.interval_ms / 1000;
     tx_ts.it_interval.tv_nsec = current_session.interval_ms % 1000 * 1000000;
@@ -325,16 +286,20 @@ void *oam_session_run_lbm(void *args)
     tx_ts.it_value.tv_nsec = current_session.interval_ms % 1000 * 1000000;
 
     /* Create TX timer */
-    if (timer_create(CLOCK_MONOTONIC, &tx_sev, &(tx_timer.timer_id)) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: timer_create: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+    current_session.tx_tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+    if (current_session.tx_tfd == -1) {
+        oam_pr_error(current_params, "[%s:%d]: timerfd_create: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
-
-    /* Timer should be created, but we still get a NULL pointer sometimes */
-    tx_timer.is_timer_created = true;
-    oam_pr_debug(current_params, "TX timer ID: %p\n", tx_timer.timer_id);
+    
+    if (timerfd_settime(current_session.tx_tfd, 0, &tx_ts, NULL) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: timerfd_settime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
 
     /* Create RX socket */
     if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
@@ -408,14 +373,6 @@ void *oam_session_run_lbm(void *args)
     /* Session configuration is successful, return a valid session id */
     current_session.is_session_configured = true;
 
-    /* Start timer */
-    if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: timer_settime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
-        current_thread->ret = -1;
-        sem_post(&current_thread->sem);
-        pthread_exit(NULL);
-    }
-
     bool got_reply = true;
 
     oam_pr_debug(current_params, "LBM session configured successfully.\n");
@@ -452,6 +409,7 @@ void *oam_session_run_lbm(void *args)
                     is_lbm_session_recovered = false;
                 }
             }
+
             got_reply = false;
 
             /* If we reached the missed pings threshold, use callback */
@@ -546,118 +504,134 @@ void *oam_session_run_lbm(void *args)
             current_session.send_next_frame = false;
         } // if (current_session.send_next_frame == true)
 
-        /* We need another loop, in case session is multicast */
-        while (current_session.send_next_frame != true) {
+        struct pollfd fds[2] = {
+            { .fd = current_session.rx_sockfd, .events = POLLIN },
+            { .fd = current_session.tx_tfd,    .events = POLLIN },
+        };
+
+        int pret = poll(fds, 2, -1);
+        if (pret < 0) {
+            oam_pr_error(current_params, "[%s:%d]: poll: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+            pthread_exit(NULL);
+        }
+
+        /* Check RX socket */
+        if (fds[0].revents & POLLIN) {
             /* Reset ancillary buffer size */
             recv_hdr.msg_controllen = sizeof(cmsg_buf);
             recv_hdr.msg_flags = 0;
 
-            /* Check for incoming data */
-            if (recvmsg_ppoll(current_session.rx_sockfd, &recv_hdr, current_session.interval_ms, &current_session) > 0) {
+            numbytes = recvmsg(current_session.rx_sockfd, &recv_hdr, 0);
+            if (numbytes <= 0)
+                continue;
 
-                /* Get aprox timestamp of received frame */
-                if (clock_gettime(CLOCK_MONOTONIC, &current_session.time_received) == -1) {
-                    oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
-                    pthread_exit(NULL);
-                }
+            /* Get aprox timestamp of received frame */
+            if (clock_gettime(CLOCK_MONOTONIC, &current_session.time_received) == -1) {
+                oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                pthread_exit(NULL);
+            }
 
-                /* Get ETH header */
-                eh = (struct ether_header *)recv_buf;
+            /* Get ETH header */
+            eh = (struct ether_header *)recv_buf;
 
-                /* If frame is not addressed to this interface, drop it */
-                if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+            /* If frame is not addressed to this interface, drop it */
+            if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+                continue;
+
+            /* Is the received frame tagged? */
+            if (oam_is_frame_tagged(&recv_hdr, &recv_auxdata) == true) {
+
+                /*
+                * If frame is tagged, but we didn't add a custom header ourselves, it should be dropped,
+                * as it is intended for a VLAN ETH that has this interface as a primary one.
+                */
+                if (current_session.custom_vlan == false)
                     continue;
-
-                /* Is the received frame tagged? */
-                if (oam_is_frame_tagged(&recv_hdr, &recv_auxdata) == true) {
-
-                    /*
-                    * If frame is tagged, but we didn't add a custom header ourselves, it should be dropped,
-                    * as it is intended for a VLAN ETH that has this interface as a primary one.
-                     */
-                    if (current_session.custom_vlan == false)
+                else
+                    /* If we did add a custom tag, check for correct VLAN ID */
+                    if ((recv_auxdata.tp_vlan_tci & 0xfff) != current_session.vlan_id)
                         continue;
-                    else
-                        /* If we did add a custom tag, check for correct VLAN ID */
-                        if ((recv_auxdata.tp_vlan_tci & 0xfff) != current_session.vlan_id)
-                            continue;
+            }
+
+            /* If frame is not OAM LBR, discard it */
+            lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+            if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
+                continue;
+
+            /* Check MEG level*/
+            if (((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
+                oam_pr_debug(current_params, "Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                            current_session.meg_level);
+                continue;
+            }
+
+            /* Check transaction ID */
+            if (ntohl(lbm_frame_p->transaction_id) != current_session.transaction_id) {
+                oam_pr_debug(current_params, "Ignoring LBR with different trans_id = %u\n", ntohl(lbm_frame_p->transaction_id));
+                continue;
+            }
+
+            /* We are receiving pings, reset missed counter */
+            lbm_missed_pings = 0;
+            lbm_replied_pings++;
+
+            if (current_session.is_multicast == true) {
+
+                /* Save live peer MAC to upper layer list */
+                if (callback_status.session_params->client_data != NULL) {
+                    memcpy(((uint8_t (*)[ETH_ALEN])callback_status.session_params->client_data)[lbm_multicast_replies], eh->ether_shost, ETH_ALEN);
+                    callback_status.cb_ret = OAM_LB_CB_LIST_LIVE_MACS;
                 }
+                lbm_multicast_replies++;
+            }
 
-                /* If frame is not OAM LBR, discard it */
-                lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
-                if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
-                    continue;
-
-                /* Check MEG level*/
-                if (((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
-                    oam_pr_debug(current_params, "Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
-                                 current_session.meg_level);
-                    continue;
-                }
-
-                /* Check transaction ID */
-                if (ntohl(lbm_frame_p->transaction_id) != current_session.transaction_id) {
-                    oam_pr_debug(current_params, "Ignoring LBR with different trans_id = %u\n", ntohl(lbm_frame_p->transaction_id));
-                    continue;
-                }
-
-                /* We are receiving pings, reset missed counter */
-                lbm_missed_pings = 0;
-                lbm_replied_pings++;
-
-                if (current_session.is_multicast == true) {
-
-                    /* Save live peer MAC to upper layer list */
-                    if (callback_status.session_params->client_data != NULL) {
-                        memcpy(((uint8_t (*)[ETH_ALEN])callback_status.session_params->client_data)[lbm_multicast_replies], eh->ether_shost, ETH_ALEN);
-                        callback_status.cb_ret = OAM_LB_CB_LIST_LIVE_MACS;
-                    }
-                    lbm_multicast_replies++;
-                }
-
-                /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
-                if (current_session.is_if_tagged == true)
-                    oam_pr_info(current_params, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
+            /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
+            if (current_session.is_if_tagged == true)
+                oam_pr_info(current_params, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
                             current_params->if_name, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
-                else
-                    oam_pr_info(current_params, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
+            else
+                oam_pr_info(current_params, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
                             current_params->if_name, current_session.vlan_id, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
 
-                got_reply = true;
+            got_reply = true;
 
-                /* If we missed pings before, we are on a recovery path */
-                if (current_params->ping_recovery_threshold > 0) {
-                    if (is_lbm_session_recovered == false) {
+            /* If we missed pings before, we are on a recovery path */
+            if (current_params->ping_recovery_threshold > 0) {
+                if (is_lbm_session_recovered == false) {
 
-                        /* We reached recovery threshold, use callback */
-                        if (current_params->ping_recovery_threshold == lbm_replied_pings) {
-                            is_lbm_session_recovered = true;
-                            if (current_params->callback != NULL) {
-                                callback_status.cb_ret = OAM_LB_CB_RECOVER_PING_THRESH;
-                                current_params->callback(&callback_status);
-                            }
+                    /* We reached recovery threshold, use callback */
+                    if (current_params->ping_recovery_threshold == lbm_replied_pings) {
+                        is_lbm_session_recovered = true;
+                        if (current_params->callback != NULL) {
+                            callback_status.cb_ret = OAM_LB_CB_RECOVER_PING_THRESH;
+                            current_params->callback(&callback_status);
                         }
                     }
                 }
-
-                /* If session is multicast, check for data again, otherwise break the loop */
-                if (current_session.is_multicast == false)
-                    break;
-
-            } // if (recvmsg_ppoll > 0)
-        } // multicast loop
-        if (current_session.is_multicast == true) {
-            /* If we have replies, use callback */
-            if ((callback_status.cb_ret == OAM_LB_CB_LIST_LIVE_MACS) && current_params->callback) {
-                current_params->callback(&callback_status);
-                lbm_multicast_replies = 0;
             }
+        }
+
+        /* Check TX timer tick */
+        if (fds[1].revents & POLLIN) {
+            uint64_t exp = 0;
+            ssize_t r = read(current_session.tx_tfd, &exp, sizeof exp);
+
+            if (r == sizeof exp) {
+                if ((callback_status.cb_ret == OAM_LB_CB_LIST_LIVE_MACS) && current_params->callback) {
+                    current_params->callback(&callback_status);
+                    callback_status.cb_ret = OAM_LB_CB_DEFAULT;
+                    lbm_multicast_replies = 0;
+                }
+
+                current_session.send_next_frame = true;
+            }
+            continue;
         }
     } // while (true)
 
@@ -953,7 +927,6 @@ void *oam_session_run_lb_discover(void *args)
     struct oam_session_thread *current_thread = (struct oam_session_thread *)args;
     struct oam_lb_session_params *current_params = current_thread->session_params;
     struct itimerspec tx_ts;
-    struct sigevent tx_sev = {0};
     struct oam_lb_session current_session;
     int if_index = 0;
     struct ether_header *eh;
@@ -984,7 +957,7 @@ void *oam_session_run_lb_discover(void *args)
 
     /* Initialize session */
     memset(&current_session, 0, sizeof(current_session));
-    current_session.lbm_tx_timer = &tx_timer;
+    current_session.tx_tfd = -1;
     current_session.is_session_configured = false;
     current_session.send_next_frame = true;
     current_session.interval_ms = current_params->interval_ms;
@@ -994,9 +967,6 @@ void *oam_session_run_lb_discover(void *args)
     current_session.tx_sockfd = -1;
     current_session.is_if_tagged = false;
     current_session.current_params = current_params;
-    tx_timer.ts = &tx_ts;
-    tx_timer.timer_id = NULL;
-    tx_timer.is_timer_created = false;
     current_session.dst_hwaddr_list = NULL;
     current_session.dst_addr_count = 0;
 
@@ -1128,12 +1098,6 @@ void *oam_session_run_lb_discover(void *args)
     } else
         current_session.is_if_tagged = true;
 
-    /* Initial TX timer configuration */
-    tx_sev.sigev_notify = SIGEV_THREAD;                         /* Notify via thread */
-    tx_sev.sigev_notify_function = &lbm_timeout_handler;        /* Handler function */
-    tx_sev.sigev_notify_attributes = NULL;                      /* Could be pointer to pthread_attr_t structure */
-    tx_sev.sigev_value.sival_ptr = &current_session;            /* Pointer passed to handler */
-
     /* Configure TX interval */
     tx_ts.it_interval.tv_sec = current_session.interval_ms / 1000;
     tx_ts.it_interval.tv_nsec = current_session.interval_ms % 1000 * 1000000;
@@ -1141,16 +1105,20 @@ void *oam_session_run_lb_discover(void *args)
     tx_ts.it_value.tv_nsec = current_session.interval_ms % 1000 * 1000000;
 
     /* Create TX timer */
-    if (timer_create(CLOCK_MONOTONIC, &tx_sev, &(tx_timer.timer_id)) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: timer_create: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+    current_session.tx_tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+    if (current_session.tx_tfd == -1) {
+        oam_pr_error(current_params, "[%s:%d]: timerfd_create: %s.\n", __FILE__, __LINE__, oam_perror(errno));
         current_thread->ret = -1;
         sem_post(&current_thread->sem);
         pthread_exit(NULL);
     }
 
-    /* Timer should be created, but we still get a NULL pointer sometimes */
-    tx_timer.is_timer_created = true;
-    oam_pr_debug(current_params, "TX timer ID: %p\n", tx_timer.timer_id);
+    if (timerfd_settime(current_session.tx_tfd, 0, &tx_ts, NULL) == -1) {
+        oam_pr_error(current_params, "[%s:%d]: timerfd_settime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+        current_thread->ret = -1;
+        sem_post(&current_thread->sem);
+        pthread_exit(NULL);
+    }
 
     /* Create RX socket */
     if ((current_session.rx_sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
@@ -1223,14 +1191,6 @@ void *oam_session_run_lb_discover(void *args)
 
     /* Session configuration is successful, return a valid session id */
     current_session.is_session_configured = true;
-
-    /* Start timer */
-    if (timer_settime(tx_timer.timer_id, 0, &tx_ts, NULL) == -1) {
-        oam_pr_error(current_params, "[%s:%d]: timer_settime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
-        current_thread->ret = -1;
-        sem_post(&current_thread->sem);
-        pthread_exit(NULL);
-    }
 
     bool got_reply = true;
 
@@ -1352,88 +1312,113 @@ void *oam_session_run_lb_discover(void *args)
             current_session.send_next_frame = false;
         } // if (current_session.send_next_frame == true)
 
-        while (current_session.send_next_frame != true) {
+        struct pollfd fds[2] = {
+            { .fd = current_session.rx_sockfd, .events = POLLIN },
+            { .fd = current_session.tx_tfd,    .events = POLLIN },
+        };
+
+        int pret = poll(fds, 2, -1);
+        if (pret < 0) {
+            oam_pr_error(current_params, "[%s:%d]: poll: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+            pthread_exit(NULL);
+        }
+
+        /* Check RX socket */
+        if (fds[0].revents & POLLIN) {
             /* Reset ancillary buffer size */
             recv_hdr.msg_controllen = sizeof(cmsg_buf);
             recv_hdr.msg_flags = 0;
 
-            /* Check for incoming data */
-            if (recvmsg_ppoll(current_session.rx_sockfd, &recv_hdr, current_session.interval_ms, &current_session) > 0) {
+            /* Check incoming data */
+            numbytes = recvmsg(current_session.rx_sockfd, &recv_hdr, 0);
+            if (numbytes <= 0)
+                continue;
 
-                /* Get aprox timestamp of received frame */
-                if (clock_gettime(CLOCK_MONOTONIC, &current_session.time_received) == -1) {
-                    oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
-                    pthread_exit(NULL);
-                }
+            /* Get aprox timestamp of received frame */
+            if (clock_gettime(CLOCK_MONOTONIC, &current_session.time_received) == -1) {
+                oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                pthread_exit(NULL);
+            }
 
-                /* Get ETH header */
-                eh = (struct ether_header *)recv_buf;
+            /* Get ETH header */
+            eh = (struct ether_header *)recv_buf;
 
-                /* If frame is not addressed to this interface, drop it */
-                if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+            /* If frame is not addressed to this interface, drop it */
+            if (memcmp(eh->ether_dhost, src_hwaddr, ETH_ALEN) != 0)
+                continue;
+
+            /* Is the received frame tagged? */
+            if (oam_is_frame_tagged(&recv_hdr, &recv_auxdata) == true) {
+
+                /*
+                * If frame is tagged, but we didn't add a custom header ourselves, it should be dropped,
+                * as it is intended for a VLAN ETH that has this interface as a primary one.
+                */
+                if (current_session.custom_vlan == false)
                     continue;
-
-                /* Is the received frame tagged? */
-                if (oam_is_frame_tagged(&recv_hdr, &recv_auxdata) == true) {
-
-                    /*
-                    * If frame is tagged, but we didn't add a custom header ourselves, it should be dropped,
-                    * as it is intended for a VLAN ETH that has this interface as a primary one.
-                     */
-                    if (current_session.custom_vlan == false)
+                else
+                    /* If we did add a custom tag, check for correct VLAN ID */
+                    if ((recv_auxdata.tp_vlan_tci & 0xfff) != current_session.vlan_id)
                         continue;
-                    else
-                        /* If we did add a custom tag, check for correct VLAN ID */
-                        if ((recv_auxdata.tp_vlan_tci & 0xfff) != current_session.vlan_id)
-                            continue;
-                }
+            }
 
-                /* If frame is not OAM LBR, discard it */
-                lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
-                if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
-                    continue;
+            /* If frame is not OAM LBR, discard it */
+            lbm_frame_p = (struct oam_lb_pdu *)(recv_buf + sizeof(struct ether_header));
+            if (lbm_frame_p->oam_header.opcode != OAM_OP_LBR)
+                continue;
 
-                /* Check MEG level*/
-                if (((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
-                    oam_pr_debug(current_params, "Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
-                                 current_session.meg_level);
-                    continue;
-                }
+            /* Check MEG level*/
+            if (((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7) != current_session.meg_level) {
+                oam_pr_debug(current_params, "Ignoring LBR with different MEG level: %d != %d\n", ((lbm_frame_p->oam_header.byte1.meg_level >> 5) & 0x7),
+                            current_session.meg_level);
+                continue;
+            }
 
-                /* Check transaction ID */
-                if (ntohl(lbm_frame_p->transaction_id) != current_session.transaction_id) {
-                    oam_pr_debug(current_params, "Ignoring LBR with different trans_id = %u\n", ntohl(lbm_frame_p->transaction_id));
-                    continue;
-                }
+            /* Check transaction ID */
+            if (ntohl(lbm_frame_p->transaction_id) != current_session.transaction_id) {
+                oam_pr_debug(current_params, "Ignoring LBR with different trans_id = %u\n", ntohl(lbm_frame_p->transaction_id));
+                continue;
+            }
 
-                /* Save live peer MAC to upper layer list */
-                if (callback_status.session_params->client_data != NULL) {
-                    memcpy(((uint8_t (*)[ETH_ALEN])callback_status.session_params->client_data)[lb_discovery_replies], eh->ether_shost, ETH_ALEN);
-                    callback_status.cb_ret = OAM_LB_CB_LIST_LIVE_MACS;
-                }
-                lb_discovery_replies++;
+            /* Save live peer MAC to upper layer list */
+            if (callback_status.session_params->client_data != NULL) {
+                memcpy(((uint8_t (*)[ETH_ALEN])callback_status.session_params->client_data)[lb_discovery_replies], eh->ether_shost, ETH_ALEN);
+                callback_status.cb_ret = OAM_LB_CB_LIST_LIVE_MACS;
+            }
+            lb_discovery_replies++;
 
-                /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
-                if (current_session.is_if_tagged == true)
-                    oam_pr_info(current_params, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
+            /* If we are starting on a tagged interface, don't print the vlan_id (as it should come from the interface name) */
+            if (current_session.is_if_tagged == true)
+                oam_pr_info(current_params, "[%s] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
                             current_params->if_name, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
-                else
-                    oam_pr_info(current_params, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
+            else
+                oam_pr_info(current_params, "[%s.%u] Got LBR from: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u, time: %.3f ms\n",
                             current_params->if_name, current_session.vlan_id, eh->ether_shost[0], eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
                             eh->ether_shost[4],eh->ether_shost[5], ntohl(lbm_frame_p->transaction_id),
                             ((current_session.time_received.tv_sec - current_session.time_sent.tv_sec) * 1000 +
                             (current_session.time_received.tv_nsec - current_session.time_sent.tv_nsec) / 1000000.0));
 
-                got_reply = true;
-            } // if (recvmsg_ppoll > 0)
+            got_reply = true;
         }
-        /* If we have replies, use callback */
-        if ((callback_status.cb_ret == OAM_LB_CB_LIST_LIVE_MACS) && current_params->callback) {
-            current_params->callback(&callback_status);
-            lb_discovery_replies = 0;
+
+        /* Check TX timer tick */
+        if (fds[1].revents & POLLIN) {
+            uint64_t exp = 0;
+            ssize_t r = read(current_session.tx_tfd, &exp, sizeof exp);
+
+            if (r == sizeof exp) {
+                if ((callback_status.cb_ret == OAM_LB_CB_LIST_LIVE_MACS) && current_params->callback) {
+                    current_params->callback(&callback_status);
+                    callback_status.cb_ret = OAM_LB_CB_DEFAULT;
+                    lb_discovery_replies = 0;
+                }
+
+                current_session.send_next_frame = true;
+            }
+            continue;
         }
     } // while (true)
 
@@ -1443,36 +1428,20 @@ void *oam_session_run_lb_discover(void *args)
     return NULL;
 }
 
-static void lbm_timeout_handler(union sigval sv)
-{
-    struct oam_lb_session *current_session = sv.sival_ptr;
-
-    current_session->send_next_frame = true;
-}
-
 static void lb_session_cleanup(void *args)
 {
     struct oam_lb_session *current_session = (struct oam_lb_session *)args;
 
-    /* Cleanup timer data */
-    if (current_session->lbm_tx_timer != NULL) {
-        if (current_session->lbm_tx_timer->is_timer_created == true) {
-            timer_delete(current_session->lbm_tx_timer->timer_id);
-
-            /*
-            * Temporary workaround for C++ programs, seems sometimes the timer doesn't 
-            * get disarmed in time, and tries to use memory that was already freed.
-            */
-            usleep(100000);
-        }
-    }
+    /* Close TX timerfd */
+    if (current_session->tx_tfd >= 0)
+        close(current_session->tx_tfd);
 
     /* Close RX socket */
-    if (current_session->rx_sockfd > 0)
+    if (current_session->rx_sockfd >= 0)
         close(current_session->rx_sockfd);
 
     /* Close TX socket */
-    if (current_session->tx_sockfd > 0)
+    if (current_session->tx_sockfd >= 0)
         close(current_session->tx_sockfd);
 
     /* Clean destination hwaddr list */
