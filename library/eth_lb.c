@@ -830,7 +830,7 @@ void *oam_session_run_lbr(void *args)
         /* We got something, look around */
         if (numbytes > 0) {
 
-            oam_pr_debug(current_params, "Received frame on LBR session, %ld bytes.\n", numbytes);
+            oam_pr_debug(current_params, "Received frame on LBR session, %zd bytes.\n", numbytes);
 
             /* If frame has a tag, it is not for us */
             if (oam_is_frame_tagged(&recv_hdr, NULL) == true)
