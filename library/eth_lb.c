@@ -548,6 +548,9 @@ void *oam_session_run_lbm(void *args)
 
         /* We need another loop, in case session is multicast */
         while (current_session.send_next_frame != true) {
+            /* Reset ancillary buffer size */
+            recv_hdr.msg_controllen = sizeof(cmsg_buf);
+            recv_hdr.msg_flags = 0;
 
             /* Check for incoming data */
             if (recvmsg_ppoll(current_session.rx_sockfd, &recv_hdr, current_session.interval_ms, &current_session) > 0) {
@@ -843,6 +846,9 @@ void *oam_session_run_lbr(void *args)
 
     /* Processing loop for incoming packets */
     while (true) {
+        /* Reset ancillary buffer size */
+        recv_hdr.msg_controllen = sizeof(cmsg_buf);
+        recv_hdr.msg_flags = 0;
 
         /* Wait for data on the socket */
         numbytes = recvmsg(current_session.rx_sockfd, &recv_hdr, 0);
@@ -1347,6 +1353,9 @@ void *oam_session_run_lb_discover(void *args)
         } // if (current_session.send_next_frame == true)
 
         while (current_session.send_next_frame != true) {
+            /* Reset ancillary buffer size */
+            recv_hdr.msg_controllen = sizeof(cmsg_buf);
+            recv_hdr.msg_flags = 0;
 
             /* Check for incoming data */
             if (recvmsg_ppoll(current_session.rx_sockfd, &recv_hdr, current_session.interval_ms, &current_session) > 0) {
