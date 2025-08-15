@@ -439,7 +439,7 @@ void *oam_session_run_lbm(void *args)
 
                 /* Build VLAN frame */
                 uint8_t tx_frame[tx_vlan_frame_s];
-                memset(&tx_frame, 0, tx_vlan_frame_s);
+                memset(tx_frame, 0, tx_vlan_frame_s);
                 oam_build_vlan_frame(
                     dst_hwaddr,                                 /* Destination MAC */
                     src_hwaddr,                                 /* MAC of local interface */
@@ -466,7 +466,7 @@ void *oam_session_run_lbm(void *args)
 
                 /* Build ETH frame */
                 uint8_t tx_frame[tx_eth_frame_s];
-                memset(&tx_frame, 0, tx_eth_frame_s);
+                memset(tx_frame, 0, tx_eth_frame_s);
                 oam_build_eth_frame(
                     dst_hwaddr,                                 /* Destination MAC */
                     src_hwaddr,                                 /* MAC of local interface */
@@ -873,7 +873,7 @@ void *oam_session_run_lbr(void *args)
 
             /* Build ETH frame */
             uint8_t tx_frame[tx_eth_frame_s];
-            memset(&tx_frame, 0, tx_eth_frame_s);
+            memset(tx_frame, 0, tx_eth_frame_s);
             oam_build_eth_frame(
                 dst_hwaddr,                                 /* Destination MAC */
                 src_hwaddr,                                 /* MAC of local interface */
@@ -1240,7 +1240,7 @@ void *oam_session_run_lb_discover(void *args)
 
                     /* Build VLAN frame */
                     uint8_t tx_frame[tx_vlan_frame_s];
-                    memset(&tx_frame, 0, tx_vlan_frame_s);
+                    memset(tx_frame, 0, tx_vlan_frame_s);
                     oam_build_vlan_frame(
                         current_session.dst_hwaddr_list[i],                                 /* Destination MAC */
                         src_hwaddr,                                                         /* MAC of local interface */
@@ -1267,7 +1267,7 @@ void *oam_session_run_lb_discover(void *args)
 
                     /* Build ETH frame */
                     uint8_t tx_frame[tx_eth_frame_s];
-                    memset(&tx_frame, 0, tx_eth_frame_s);
+                    memset(tx_frame, 0, tx_eth_frame_s);
                     oam_build_eth_frame(
                         current_session.dst_hwaddr_list[i],                                 /* Destination MAC */
                         src_hwaddr,                                                         /* MAC of local interface */
