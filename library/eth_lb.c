@@ -434,6 +434,7 @@ void *oam_session_run_lbm(void *args)
 
             /* Update frame and send on wire */
             oam_build_lb_frame(current_session.transaction_id, OAM_HDR_END_TLV, &lb_frame);
+            current_session.send_next_frame = false;
 
             if (current_session.pcp > 0 || current_session.vlan_id) {
 
@@ -500,8 +501,6 @@ void *oam_session_run_lbm(void *args)
                 oam_pr_debug(current_params, "[%s.%d] Sent LBM to: %02X:%02X:%02X:%02X:%02X:%02X, trans_id: %u\n", current_params->if_name,
                     current_params->vlan_id, dst_hwaddr[0], dst_hwaddr[1], dst_hwaddr[2], dst_hwaddr[3], dst_hwaddr[4], dst_hwaddr[5],
                     current_session.transaction_id);
-
-            current_session.send_next_frame = false;
         } // if (current_session.send_next_frame == true)
 
         struct pollfd fds[2] = {
@@ -515,12 +514,57 @@ void *oam_session_run_lbm(void *args)
             pthread_exit(NULL);
         }
 
+        /* Treat RX socket errors */
+        if (fds[0].revents & POLLNVAL) {
+            oam_pr_error(current_params, "[%s:%d]: POLLNVAL.\n", __FILE__, __LINE__);
+            pthread_exit(NULL);
+        }
+
+        if (fds[0].revents & (POLLERR | POLLHUP)) {
+            int soerr = 0; socklen_t sl = sizeof(soerr);
+            if (getsockopt(current_session.rx_sockfd, SOL_SOCKET, SO_ERROR, &soerr, &sl) < 0) {
+                oam_pr_error(current_params, "[%s:%d]: getsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                pthread_exit(NULL);
+            }
+
+            /* Pace on likely transient link conditions */
+            if (soerr == 0 || soerr == ENETDOWN || soerr == ENETUNREACH ||
+                soerr == EHOSTDOWN || soerr == EHOSTUNREACH || soerr == ENOBUFS) {
+
+                /* Wait for next TX tick so we still count timeouts, but avoid spin */
+                struct pollfd wait_timer = { .fd = current_session.tx_tfd, .events = POLLIN };
+                if (poll(&wait_timer, 1, -1) < 0) {
+                    oam_pr_error(current_params, "[%s:%d]: poll: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                    pthread_exit(NULL);
+                }
+
+                uint64_t exp;
+                if (read(current_session.tx_tfd, &exp, sizeof(exp)) < 0) {
+                    oam_pr_error(current_params, "[%s:%d]: read: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                    pthread_exit(NULL);
+                }
+                current_session.send_next_frame = true;
+                continue;
+            }
+
+        /* Anything else is considered fatal */
+        oam_pr_error(current_params, "[%s:%d]: revents=0x%x so_error=%s\n", __FILE__, __LINE__,
+                    fds[0].revents, oam_perror(soerr));
+            pthread_exit(NULL);
+        }
+
+        if (fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            oam_pr_error(current_params, "[%s:%d]: poll revents=0x%x\n", __FILE__, __LINE__, fds[1].revents);
+            pthread_exit(NULL);
+        }
+
         /* Check RX socket */
         if (fds[0].revents & POLLIN) {
             /* Reset ancillary buffer size */
             recv_hdr.msg_controllen = sizeof(cmsg_buf);
             recv_hdr.msg_flags = 0;
 
+            /* Check incoming data */
             numbytes = recvmsg(current_session.rx_sockfd, &recv_hdr, 0);
             if (numbytes <= 0)
                 continue;
@@ -620,9 +664,9 @@ void *oam_session_run_lbm(void *args)
         /* Check TX timer tick */
         if (fds[1].revents & POLLIN) {
             uint64_t exp = 0;
-            ssize_t r = read(current_session.tx_tfd, &exp, sizeof exp);
+            ssize_t r = read(current_session.tx_tfd, &exp, sizeof(exp));
 
-            if (r == sizeof exp) {
+            if (r == sizeof(exp)) {
                 if ((callback_status.cb_ret == OAM_LB_CB_LIST_LIVE_MACS) && current_params->callback) {
                     current_params->callback(&callback_status);
                     callback_status.cb_ret = OAM_LB_CB_DEFAULT;
@@ -1233,6 +1277,7 @@ void *oam_session_run_lb_discover(void *args)
 
             /* Update frame and send on wire */
             oam_build_lb_frame(current_session.transaction_id, OAM_HDR_END_TLV, &lb_frame);
+            current_session.send_next_frame = false;
 
             /* Loop through the list of destination MAC addresses, build and send the frame */
             for (size_t i = 0; i < current_session.dst_addr_count; i++) {
@@ -1308,8 +1353,6 @@ void *oam_session_run_lb_discover(void *args)
                 oam_pr_error(current_params, "[%s:%d]: clock_gettime: %s.\n", __FILE__, __LINE__, oam_perror(errno));
                 pthread_exit(NULL);
             }
-
-            current_session.send_next_frame = false;
         } // if (current_session.send_next_frame == true)
 
         struct pollfd fds[2] = {
@@ -1320,6 +1363,50 @@ void *oam_session_run_lb_discover(void *args)
         int pret = poll(fds, 2, -1);
         if (pret < 0) {
             oam_pr_error(current_params, "[%s:%d]: poll: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+            pthread_exit(NULL);
+        }
+
+        /* Treat RX socket errors */
+        if (fds[0].revents & POLLNVAL) {
+            oam_pr_error(current_params, "[%s:%d]: POLLNVAL.\n", __FILE__, __LINE__);
+            pthread_exit(NULL);
+        }
+
+        if (fds[0].revents & (POLLERR | POLLHUP)) {
+            int soerr = 0; socklen_t sl = sizeof(soerr);
+            if (getsockopt(current_session.rx_sockfd, SOL_SOCKET, SO_ERROR, &soerr, &sl) < 0) {
+                oam_pr_error(current_params, "[%s:%d]: getsockopt: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                pthread_exit(NULL);
+            }
+
+            /* Pace on likely transient link conditions */
+            if (soerr == 0 || soerr == ENETDOWN || soerr == ENETUNREACH ||
+                soerr == EHOSTDOWN || soerr == EHOSTUNREACH || soerr == ENOBUFS) {
+
+                /* Wait for next TX tick so we still count timeouts, but avoid spin */
+                struct pollfd wait_timer = { .fd = current_session.tx_tfd, .events = POLLIN };
+                if (poll(&wait_timer, 1, -1) < 0) {
+                    oam_pr_error(current_params, "[%s:%d]: poll: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                    pthread_exit(NULL);
+                }
+
+                uint64_t exp;
+                if (read(current_session.tx_tfd, &exp, sizeof(exp)) < 0) {
+                    oam_pr_error(current_params, "[%s:%d]: read: %s.\n", __FILE__, __LINE__, oam_perror(errno));
+                    pthread_exit(NULL);
+                }
+                current_session.send_next_frame = true;
+                continue;
+            }
+
+        /* Anything else is considered fatal */
+        oam_pr_error(current_params, "[%s:%d]: revents=0x%x so_error=%s\n", __FILE__, __LINE__,
+                    fds[0].revents, oam_perror(soerr));
+            pthread_exit(NULL);
+        }
+
+        if (fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            oam_pr_error(current_params, "[%s:%d]: poll revents=0x%x\n", __FILE__, __LINE__, fds[1].revents);
             pthread_exit(NULL);
         }
 
@@ -1407,9 +1494,9 @@ void *oam_session_run_lb_discover(void *args)
         /* Check TX timer tick */
         if (fds[1].revents & POLLIN) {
             uint64_t exp = 0;
-            ssize_t r = read(current_session.tx_tfd, &exp, sizeof exp);
+            ssize_t r = read(current_session.tx_tfd, &exp, sizeof(exp));
 
-            if (r == sizeof exp) {
+            if (r == sizeof(exp)) {
                 if ((callback_status.cb_ret == OAM_LB_CB_LIST_LIVE_MACS) && current_params->callback) {
                     current_params->callback(&callback_status);
                     callback_status.cb_ret = OAM_LB_CB_DEFAULT;
