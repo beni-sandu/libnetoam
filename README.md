@@ -1,7 +1,13 @@
-<a href="https://scan.coverity.com/projects/beni-sandu-libnetoam">
-  <img alt="Coverity Scan Build Status"
-       src="https://img.shields.io/coverity/scan/31409.svg"/>
-</a>
+<p>
+  <a href="https://scan.coverity.com/projects/beni-sandu-libnetoam">
+    <img alt="Coverity Scan"
+         src="https://img.shields.io/coverity/scan/31409.svg" />
+  </a>
+  <a href="https://github.com/beni-sandu/libnetoam/actions/workflows/build-and-test.yaml">
+    <img alt="CI"
+         src="https://img.shields.io/github/actions/workflow/status/beni-sandu/libnetoam/build-and-test.yaml?branch=master&label=CI&cacheSeconds=600" />
+  </a>
+</p>
 
 Operation, administration and maintenance (OAM) networking protocols
 ====================================================================
