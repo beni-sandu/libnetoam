@@ -22,7 +22,7 @@ extern "C" {
 #include "eth_lb.h"
 
 /* Library version */
-#define LIBNETOAM_VERSION "0.1.1"
+#define LIBNETOAM_VERSION "0.1.2"
 
 /* Print macros */
 #ifdef DEBUG_ENABLE

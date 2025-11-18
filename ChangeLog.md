@@ -3,7 +3,7 @@ Change log
 
 All relevant changes are documented in this file.
 
-v0.1.2 released TBD
+v0.1.2 released 18-Nov-2025
 -------------
 * rework transmit interval implementation
 * implement a way to retrieve list of live peers for multicast and LB_DISCOVER
